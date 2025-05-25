@@ -1,9 +1,7 @@
 import abc
-from typing import TypedDict
 
 from langgraph.graph import StateGraph
 from langgraph.graph.graph import CompiledGraph
-from langchain_core.language_models import BaseChatModel
 from pydantic import BaseModel
 
 
@@ -28,5 +26,3 @@ class AgentGraphBuilder(abc.ABC):
     def drraw_mermaid_graph(self) -> str:
         graph = self.build_graph()
         return graph.get_graph().draw_mermaid()
-
-

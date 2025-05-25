@@ -13,6 +13,7 @@ dependencies = [
     "langchain-chroma>=0.2.4",
     "langchain-community>=0.3.24",
     "langchain-core>=0.3.61",
+    "langchain-google-genai>=2.1.4",
     "langchain-openai>=0.3.18",
     "langchain-text-splitters>=0.3.8",
     "langgraph>=0.4.7",
@@ -33,10 +34,6 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/task_manager"]
 
-[tool.ruff]
-line-length = 135
-src = ["src", "tests"]
-exclude = [".venv", "migrations"]
 
 [dependency-groups]
 dev = [
@@ -50,3 +47,28 @@ dev = [
 addopts = "-p no:warnings --cov --cov-fail-under=55 --cov-report=term-missing"
 log_cli = true
 pythonpath = "./src"
+
+[tool.ruff]
+line-length = 135
+src = ["src", "tests"]
+exclude = [".venv"]
+
+[tool.ruff.lint]
+select = [
+    "I",
+    "F",
+    "E",
+    "S",
+    "N",
+    "B"
+]
+ignore = [
+    "F401",
+    "E501",
+    "S101"
+]
+
+[tool.ruff.format]
+quote-style = "single"
+indent-style = "space"
+docstring-code-format = true
