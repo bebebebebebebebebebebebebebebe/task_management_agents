@@ -1,17 +1,15 @@
 import os
 import uuid
-from collections import deque
 
-from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.func import entrypoint, task
-from langgraph.graph import END, MessagesState, StateGraph
+from langgraph.graph import END, StateGraph
 from langgraph.graph.graph import CompiledGraph
-from langgraph.types import Command, interrupt
+from langgraph.types import interrupt
 from schemas import (
     DetailedSectionContent,
     DynamicOutline,
@@ -21,62 +19,58 @@ from schemas import (
     RequirementState,
 )
 
-from common.config import settings
-
 # 必須項目と任意項目を分ける
 MANDATORY = [
-    "project_name",
-    "background",
-    "goals",
-    "stake_holders",
-    "scopes",
+    'project_name',
+    'background',
+    'goals',
+    'stake_holders',
+    'scopes',
 ]
 
 OPTIONAL = [
-    "constraints",
-    "non_functional",
-    "budget",
-    "schedule",
-    "assumptions",  # 新たに追加
-    "risks",  # 新たに追加
-    "compliance",  # 新たに追加
+    'constraints',
+    'non_functional',
+    'budget',
+    'schedule',
+    'assumptions',  # 新たに追加
+    'risks',  # 新たに追加
+    'compliance',  # 新たに追加
 ]
 
 # 質問テンプレートを非技術者向けに修正
 QUESTION_TEMPLATES = {
-    "project_name": "このプロジェクト・システム開発の名前は何ですか？まだ決まっていなければ仮の名前でも構いません。",
-    "background": "このプロジェクトを始めようと思った理由や、現在抱えている問題を教えてください。",
-    "goals": "このプロジェクトで達成したいことは何ですか？成功と言えるためには、どのような結果が必要ですか？",
-    "stake_holders": "このプロジェクトに関わる人や部署・会社を教えてください。例えば「営業部」「エンドユーザー」「IT部門」など。",
-    "scopes": "このプロジェクトで作るもの・含めるものと、含めないものを教えてください。",
-    "constraints": "予算の上限や、守るべきルール、技術的な制約などはありますか？",
-    "non_functional": "システムの速さ、セキュリティ、使いやすさなどについて、特に重視する点はありますか？",
-    "budget": "このプロジェクトの予算はどのくらいでしょうか？目安でも構いません。",
-    "schedule": "いつ頃始めて、いつ頃完成させたいですか？重要な節目があれば教えてください。",
-    "assumptions": "このプロジェクトを進める上での前提条件（例：「すでに〇〇のデータがある」など）はありますか？",
-    "risks": "心配している課題やリスクがあれば教えてください。",
-    "compliance": "特に守るべき法律やルールはありますか？",
+    'project_name': 'このプロジェクト・システム開発の名前は何ですか？まだ決まっていなければ仮の名前でも構いません。',
+    'background': 'このプロジェクトを始めようと思った理由や、現在抱えている問題を教えてください。',
+    'goals': 'このプロジェクトで達成したいことは何ですか？成功と言えるためには、どのような結果が必要ですか？',
+    'stake_holders': 'このプロジェクトに関わる人や部署・会社を教えてください。例えば「営業部」「エンドユーザー」「IT部門」など。',
+    'scopes': 'このプロジェクトで作るもの・含めるものと、含めないものを教えてください。',
+    'constraints': '予算の上限や、守るべきルール、技術的な制約などはありますか？',
+    'non_functional': 'システムの速さ、セキュリティ、使いやすさなどについて、特に重視する点はありますか？',
+    'budget': 'このプロジェクトの予算はどのくらいでしょうか？目安でも構いません。',
+    'schedule': 'いつ頃始めて、いつ頃完成させたいですか？重要な節目があれば教えてください。',
+    'assumptions': 'このプロジェクトを進める上での前提条件（例：「すでに〇〇のデータがある」など）はありますか？',
+    'risks': '心配している課題やリスクがあれば教えてください。',
+    'compliance': '特に守るべき法律やルールはありますか？',
 }
 
 # 専門用語の説明
 TERM_EXPLANATIONS = {
-    "KPI": "目標の達成度を測るための指標のことです。例えば「売上20%増加」「顧客満足度80%以上」などです。",
-    "ステークホルダー": "プロジェクトに関わる人や組織のことです。例えば「お客様」「開発チーム」「営業部門」などです。",
-    "法規制": "守るべき法律や規則のことです。例えば「個人情報保護法」「業界ガイドライン」などです。",
-    "非機能要件": "システムの動作以外の特性のことです。例えば「応答速度」「セキュリティ対策」「使いやすさ」などです。",
-    "スコープ": "プロジェクトで実現する範囲と、含まないものを明確にすることです。",
-    "マイルストーン": "プロジェクトの重要な節目や達成すべき中間目標のことです。",
+    'KPI': '目標の達成度を測るための指標のことです。例えば「売上20%増加」「顧客満足度80%以上」などです。',
+    'ステークホルダー': 'プロジェクトに関わる人や組織のことです。例えば「お客様」「開発チーム」「営業部門」などです。',
+    '法規制': '守るべき法律や規則のことです。例えば「個人情報保護法」「業界ガイドライン」などです。',
+    '非機能要件': 'システムの動作以外の特性のことです。例えば「応答速度」「セキュリティ対策」「使いやすさ」などです。',
+    'スコープ': 'プロジェクトで実現する範囲と、含まないものを明確にすることです。',
+    'マイルストーン': 'プロジェクトの重要な節目や達成すべき中間目標のことです。',
 }
-GOOGLE_GENAI_MODEL = "models/gemini-1.5-pro"
+GOOGLE_GENAI_MODEL = 'models/gemini-1.5-pro'
 
 llm = ChatGoogleGenerativeAI(model=GOOGLE_GENAI_MODEL, temperature=0.7)
 check_pointer = InMemorySaver()
-config = {"configurable": {"thread_id": uuid.uuid4()}}
+config = {'configurable': {'thread_id': uuid.uuid4()}}
 
 
-def parse_user_response(
-    user_message: str, current_requirement: ProjectBusinessRequirement
-) -> ProjectBusinessRequirement:
+def parse_user_response(user_message: str, current_requirement: ProjectBusinessRequirement) -> ProjectBusinessRequirement:
     current_info_json = current_requirement.model_dump_json(indent=2, exclude_none=True)
 
     # システムメッセージを改善（推論機能を追加）
@@ -108,21 +102,17 @@ def parse_user_response(
     parser_prompt = ChatPromptTemplate.from_messages(
         [
             (
-                "system",
+                'system',
                 parse_system_msg,
             ),
             (
-                "human",
+                'human',
                 parse_user_msg,
             ),
         ]
     ).partial(current_info=current_info_json)
-    parser_chain = parser_prompt | llm.with_structured_output(
-        ProjectBusinessRequirement
-    )
-    project_business_requirement: ProjectBusinessRequirement = parser_chain.invoke(
-        {"user_message": user_message}
-    )
+    parser_chain = parser_prompt | llm.with_structured_output(ProjectBusinessRequirement)
+    project_business_requirement: ProjectBusinessRequirement = parser_chain.invoke({'user_message': user_message})
     return project_business_requirement
 
 
@@ -136,7 +126,7 @@ def get_missing_fields(requirement: ProjectBusinessRequirement | None) -> list[s
     # 必須項目と任意項目を別々にチェック
     for field_list in [MANDATORY, OPTIONAL]:
         for field in field_list:
-            if field not in data or data[field] in (None, "", []):
+            if field not in data or data[field] in (None, '', []):
                 missing_fields.append(field)
 
     return missing_fields
@@ -152,7 +142,7 @@ def get_missing_mandatory_fields(
     data = requirement.model_dump()
 
     for field in MANDATORY:
-        if field not in data or data[field] in (None, "", []):
+        if field not in data or data[field] in (None, '', []):
             missing_fields.append(field)
 
     return missing_fields
@@ -168,7 +158,7 @@ def get_missing_optional_fields(
     data = requirement.model_dump()
 
     for field in OPTIONAL:
-        if field not in data or data[field] in (None, "", []):
+        if field not in data or data[field] in (None, '', []):
             missing_fields.append(field)
 
     return missing_fields
@@ -176,107 +166,91 @@ def get_missing_optional_fields(
 
 def build_questions(missing_fields: list[str], batch_size: int = 3) -> str:
     questions = [QUESTION_TEMPLATES[field] for field in missing_fields[:batch_size]]
-    return "\n".join([f"- {question}" for question in questions])
+    return '\n'.join([f'- {question}' for question in questions])
 
 
 def saved_document(requirement_document: RequirementDocument, file_path: str) -> None:
     if not requirement_document.markdown_text:
-        raise ValueError("RequirementDocument is empty.")
+        raise ValueError('RequirementDocument is empty.')
 
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
-    with open(file_path, "w") as f:
+    with open(file_path, 'w') as f:
         f.write(requirement_document.markdown_text)
 
-    print(f"ファイルを保存しました: {file_path}")
+    print(f'ファイルを保存しました: {file_path}')
 
 
 def get_last_user_message(state: RequirementState) -> str:
     """最後のユーザーのメッセージを取得"""
-    if state.get("messages", []) and isinstance(state["messages"][-1], HumanMessage):
-        return state["messages"][-1].content
+    if state.get('messages', []) and isinstance(state['messages'][-1], HumanMessage):
+        return state['messages'][-1].content
     else:
-        return ""
+        return ''
 
 
-def update_requirements(
-    state: RequirementState, user_message: str
-) -> ProjectBusinessRequirement:
+def update_requirements(state: RequirementState, user_message: str) -> ProjectBusinessRequirement:
     """ユーザー入力に基づいて要件情報を更新"""
-    current_requirement = state.get("requirement") or ProjectBusinessRequirement()
-    if user_message and not state.get(
-        "user_wants_help", False
-    ):  # ヘルプコマンドの場合は更新しない
+    current_requirement = state.get('requirement') or ProjectBusinessRequirement()
+    if user_message and not state.get('user_wants_help', False):  # ヘルプコマンドの場合は更新しない
         current_requirement = parse_user_response(user_message, current_requirement)
-        print(
-            f"現在の収集済み要件:\n{current_requirement.model_dump_json(indent=2, exclude_none=True)}"
-        )
+        print(f'現在の収集済み要件:\n{current_requirement.model_dump_json(indent=2, exclude_none=True)}')
 
     return current_requirement
 
 
-def handle_special_commands(
-    state: RequirementState, user_message: str
-) -> RequirementState:
+def handle_special_commands(state: RequirementState, user_message: str) -> RequirementState:
     """ユーザーの特殊なコマンドを処理"""
-    if user_message.lower() in ["ヘルプ", "help", "用語", "わからない言葉がある"]:
-        return {"user_wants_help": True}
+    if user_message.lower() in ['ヘルプ', 'help', '用語', 'わからない言葉がある']:
+        return {'user_wants_help': True}
 
     if any(
         keyword in user_message.lower()
         for keyword in [
-            "ドキュメント作成",
-            "document",
-            "次へ進む",
-            "完了",
-            "終了",
-            "次へ",
-            "ドキュメント",
+            'ドキュメント作成',
+            'document',
+            '次へ進む',
+            '完了',
+            '終了',
+            '次へ',
+            'ドキュメント',
         ]
     ):
-        ai_response = "ありがとうございます。収集した情報を元に要求定義書を作成します。"
-        updated_messages = state.get("messages", []) + [AIMessage(content=ai_response)]
+        ai_response = 'ありがとうございます。収集した情報を元に要求定義書を作成します。'
+        updated_messages = state.get('messages', []) + [AIMessage(content=ai_response)]
         return {
-            "messages": updated_messages,
-            "current_phase": RequirementsPhase.OUTLINE_GENERATION,
-            "requirement": state.get("requirement") or ProjectBusinessRequirement(),
-            "interview_complete": True,
+            'messages': updated_messages,
+            'current_phase': RequirementsPhase.OUTLINE_GENERATION,
+            'requirement': state.get('requirement') or ProjectBusinessRequirement(),
+            'interview_complete': True,
         }
 
     return None
 
 
-def handle_updated_requirement_state(
-    current_requirement: ProjectBusinessRequirement, state: RequirementState
-) -> RequirementState:
+def handle_updated_requirement_state(current_requirement: ProjectBusinessRequirement, state: RequirementState) -> RequirementState:
     """要件情報が更新された場合の処理"""
     missing_mandatory_fields = get_missing_mandatory_fields(current_requirement)
     missing_optional_fields = get_missing_optional_fields(current_requirement)
-    is_user_responded = state.get("messages", []) and isinstance(
-        state["messages"][-1], HumanMessage
-    )
+    is_user_responded = state.get('messages', []) and isinstance(state['messages'][-1], HumanMessage)
 
     if missing_mandatory_fields:  # 必須項目が揃っていない場合
-        ai_response = generate_ai_response_incomplete_mandatory_case(
-            is_user_responded, missing_mandatory_fields
-        )
-        updated_message = state.get("messages", []) + [AIMessage(content=ai_response)]
+        ai_response = generate_ai_response_incomplete_mandatory_case(is_user_responded, missing_mandatory_fields)
+        updated_message = state.get('messages', []) + [AIMessage(content=ai_response)]
         return {
-            "messages": updated_message,
-            "requirement": current_requirement,
-            "current_phase": RequirementsPhase.INTERVIEW,
-            "interview_complete": False,
+            'messages': updated_message,
+            'requirement': current_requirement,
+            'current_phase': RequirementsPhase.INTERVIEW,
+            'interview_complete': False,
         }
 
     # 必須項目が揃っている場合
-    is_asked_for_optional = state.get("asked_for_optional", False)
-    ai_response = generate_ai_response_complete_madatory_case(
-        is_asked_for_optional, missing_optional_fields
-    )
-    updated_message = state.get("messages", []) + [AIMessage(content=ai_response)]
+    is_asked_for_optional = state.get('asked_for_optional', False)
+    ai_response = generate_ai_response_complete_madatory_case(is_asked_for_optional, missing_optional_fields)
+    updated_message = state.get('messages', []) + [AIMessage(content=ai_response)]
     return {
-        "messages": updated_message,
-        "requirement": current_requirement,
-        "asked_for_optional": True,
+        'messages': updated_message,
+        'requirement': current_requirement,
+        'asked_for_optional': True,
     }
 
 
@@ -335,10 +309,10 @@ def generate_ai_response_incomplete_mandatory_case(
 
 def introduction_node(state: RequirementState) -> RequirementState:
     # ヒアリングの目的を説明するメッセージを生成
-    state["current_phase"] = RequirementsPhase.INTRODUCTION
+    state['current_phase'] = RequirementsPhase.INTRODUCTION
 
     # 必須項目のみリスト化
-    mandatory_list = "\n".join([f"- {QUESTION_TEMPLATES[key]}" for key in MANDATORY])
+    mandatory_list = '\n'.join([f'- {QUESTION_TEMPLATES[key]}' for key in MANDATORY])
 
     # 専門用語の説明を追加
     # term_explanations = "\n".join(
@@ -356,47 +330,39 @@ def introduction_node(state: RequirementState) -> RequirementState:
 
 まずは、プロジェクトについて自由に教えていただけますか？
 """
-    updated_messages = state.get("messages", []) + [
-        AIMessage(content=introduction_message_content)
-    ]
+    updated_messages = state.get('messages', []) + [AIMessage(content=introduction_message_content)]
     return {
-        "messages": updated_messages,
-        "current_phase": RequirementsPhase.INTERVIEW,
-        "asked_for_optional": False,
-        "technical_level": "beginner",  # デフォルトは初心者レベルと仮定
-        "skipped_questions": [],
+        'messages': updated_messages,
+        'current_phase': RequirementsPhase.INTERVIEW,
+        'asked_for_optional': False,
+        'technical_level': 'beginner',  # デフォルトは初心者レベルと仮定
+        'skipped_questions': [],
     }
 
 
 def help_node(state: RequirementState) -> RequirementState:
     """専門用語の説明を提供するノード"""
-    term_explanations = "\n".join(
-        [f"・{term}： {explanation}" for term, explanation in TERM_EXPLANATIONS.items()]
-    )
+    term_explanations = '\n'.join([f'・{term}： {explanation}' for term, explanation in TERM_EXPLANATIONS.items()])
 
     help_message_content = f"""【専門用語の説明】
 {term_explanations}
 
 他にご質問があればお気軽にどうぞ。引き続き、プロジェクトについて教えていただければと思います。
 """
-    updated_messages = state.get("messages", []) + [
-        AIMessage(content=help_message_content)
-    ]
+    updated_messages = state.get('messages', []) + [AIMessage(content=help_message_content)]
     return {
-        "messages": updated_messages,
-        "user_wants_help": False,  # ヘルプを提供したのでフラグをリセット
+        'messages': updated_messages,
+        'user_wants_help': False,  # ヘルプを提供したのでフラグをリセット
     }
 
 
 def followup_node(state: RequirementState) -> RequirementState:
     user_message = get_last_user_message(state)
     if not user_message:
-        user_message = interrupt("ユーザの入力を待っています。")
-        updated_mesage = state.get("messages", []) + [
-            HumanMessage(content=user_message)
-        ]
+        user_message = interrupt('ユーザの入力を待っています。')
+        updated_mesage = state.get('messages', []) + [HumanMessage(content=user_message)]
         return {
-            "messages": updated_mesage,
+            'messages': updated_mesage,
         }
 
     # # 特殊コマンドの処理（ユーザーが「わからない」と答えた場合）
@@ -406,23 +372,21 @@ def followup_node(state: RequirementState) -> RequirementState:
 
     # 通常の入力処理：要件情報の更新
     current_requirement = update_requirements(state, user_message)
-    updated_state = handle_updated_requirement_state(
-        current_requirement=current_requirement, state=state
-    )
+    updated_state = handle_updated_requirement_state(current_requirement=current_requirement, state=state)
     return updated_state
 
 
 def outline_generation_node(state: RequirementState) -> RequirementState:
     """要求定義書のアウトラインを生成するノード"""
-    print("要求定義ドキュメントのアウトラインを動的に生成します...")
-    requirement = state.get("requirement")
+    print('要求定義ドキュメントのアウトラインを動的に生成します...')
+    requirement = state.get('requirement')
     if not requirement:
-        err_msg = "エラー: アウトライン生成のための要求情報がありません。ヒアリングに戻ります。"
+        err_msg = 'エラー: アウトライン生成のための要求情報がありません。ヒアリングに戻ります。'
         # print(err_msg)
         return {
-            "messages": state.get("messages", []) + [AIMessage(content=err_msg)],
-            "current_phase": RequirementsPhase.INTERVIEW,
-            "interview_complete": False,
+            'messages': state.get('messages', []) + [AIMessage(content=err_msg)],
+            'current_phase': RequirementsPhase.INTERVIEW,
+            'interview_complete': False,
         }
 
     # ここでアウトライン生成のコードを実装
@@ -445,52 +409,43 @@ def outline_generation_node(state: RequirementState) -> RequirementState:
 出力形式の指示に従い、JSONオブジェクトで結果を返してください:
 {format_instructions}
 """
-    prompt = ChatPromptTemplate.from_messages(
-        [("system", outline_system_msg), ("human", outline_user_msg)]
-    )
-    requirement_json = state["requirement"].model_dump_json(indent=2, exclude_none=True)
+    prompt = ChatPromptTemplate.from_messages([('system', outline_system_msg), ('human', outline_user_msg)])
+    requirement_json = state['requirement'].model_dump_json(indent=2, exclude_none=True)
     parser = PydanticOutputParser(pydantic_object=DynamicOutline)
     chain = prompt | llm | parser
     outline_result: DynamicOutline = chain.invoke(
         {
-            "project_info": requirement_json,
-            "format_instructions": parser.get_format_instructions(),
+            'project_info': requirement_json,
+            'format_instructions': parser.get_format_instructions(),
         }
     )
     return {
-        "messages": state.get("messages", [])
-        + [AIMessage(content="アウトラインを生成しました。次に詳細を記述します。")],
-        "dynamic_outline": outline_result,
-        "current_phase": RequirementsPhase.DETAIL_GENERATION,
+        'messages': state.get('messages', []) + [AIMessage(content='アウトラインを生成しました。次に詳細を記述します。')],
+        'dynamic_outline': outline_result,
+        'current_phase': RequirementsPhase.DETAIL_GENERATION,
     }
 
 
 def decide_entry_point(state: RequirementState):
-    if state.get("user_wants_help"):
-        return "help"
-    elif (
-        state.get("current_phase")
-        and state["current_phase"] != RequirementsPhase.INTRODUCTION
-    ):
-        return "followup"
-    return "intro"
+    if state.get('user_wants_help'):
+        return 'help'
+    elif state.get('current_phase') and state['current_phase'] != RequirementsPhase.INTRODUCTION:
+        return 'followup'
+    return 'intro'
 
 
 def decide_next_from_followup(state: RequirementState):
-    if state.get("user_wants_help"):
-        return "help"
-    elif (
-        state.get("interview_complete")
-        and state.get("current_phase") == RequirementsPhase.OUTLINE_GENERATION
-    ):
-        return "outline_generation_node"
+    if state.get('user_wants_help'):
+        return 'help'
+    elif state.get('interview_complete') and state.get('current_phase') == RequirementsPhase.OUTLINE_GENERATION:
+        return 'outline_generation_node'
 
     # interview_complete が False か、current_phase が INTERVIEW なら followup に戻る
-    return "followup"
+    return 'followup'
 
 
 def decide_next_from_help(state: RequirementState):
-    return "followup"
+    return 'followup'
 
 
 @task
@@ -530,9 +485,7 @@ def detail_generation_task(
 {format_instructions}
 """
     parser = PydanticOutputParser(pydantic_object=DetailedSectionContent)
-    prompt = ChatPromptTemplate.from_messages(
-        [("system", detail_system_msg), ("human", detail_user_msg)]
-    ).partial(
+    prompt = ChatPromptTemplate.from_messages([('system', detail_system_msg), ('human', detail_user_msg)]).partial(
         project_info=requirement.model_dump_json(indent=2, exclude_none=True),
         outline_structure=dynamic_outline.model_dump_json(indent=2, exclude_none=True),
         format_instructions=parser.get_format_instructions(),
@@ -540,8 +493,8 @@ def detail_generation_task(
     chain = prompt | llm | parser
     result = chain.invoke(
         {
-            "section_title": section_title,
-            "heading": heading,
+            'section_title': section_title,
+            'heading': heading,
         }
     )
     return result
@@ -550,26 +503,24 @@ def detail_generation_task(
 @entrypoint()
 def detail_generation_node(state: RequirementState) -> RequirementState:
     """要求定義書の詳細を生成するノード"""
-    print("要求定義ドキュメントの詳細を動的に生成します...")
-    dynamic_outline = state.get("dynamic_outline")
+    print('要求定義ドキュメントの詳細を動的に生成します...')
+    dynamic_outline = state.get('dynamic_outline')
     # アウトラインが生成されているか確認
     if not dynamic_outline:
-        err_msg = (
-            "エラー: アウトラインが生成されていません。アウトライン生成に戻ります。"
-        )
+        err_msg = 'エラー: アウトラインが生成されていません。アウトライン生成に戻ります。'
         return {
-            "messages": state.get("messages", []) + [AIMessage(content=err_msg)],
-            "current_phase": RequirementsPhase.OUTLINE_GENERATION,
+            'messages': state.get('messages', []) + [AIMessage(content=err_msg)],
+            'current_phase': RequirementsPhase.OUTLINE_GENERATION,
         }
 
     # 要件情報が存在するか確認
-    requirement = state.get("requirement")
+    requirement = state.get('requirement')
     if not requirement:
-        err_msg = "エラー: 詳細生成のための要求情報がありません。ヒアリングに戻ります。"
+        err_msg = 'エラー: 詳細生成のための要求情報がありません。ヒアリングに戻ります。'
         return {
-            "messages": state.get("messages", []) + [AIMessage(content=err_msg)],
-            "current_phase": RequirementsPhase.INTERVIEW,
-            "interview_complete": False,
+            'messages': state.get('messages', []) + [AIMessage(content=err_msg)],
+            'current_phase': RequirementsPhase.INTERVIEW,
+            'interview_complete': False,
         }
 
     detailed_sections = []
@@ -584,7 +535,7 @@ def detail_generation_node(state: RequirementState) -> RequirementState:
             heading=None,
         )
         futures.append(section_future)
-        task_mapping[section_future] = ("section", section.section_title, None)
+        task_mapping[section_future] = ('section', section.section_title, None)
 
         for heading in section.headings:
             heading_future = detail_generation_task(
@@ -594,12 +545,12 @@ def detail_generation_node(state: RequirementState) -> RequirementState:
                 heading=heading,
             )
             futures.append(heading_future)
-            task_mapping[heading_future] = ("heading", section.section_title, heading)
+            task_mapping[heading_future] = ('heading', section.section_title, heading)
 
     for future in futures:
         result = future.result()
         section_type, section_title, heading = task_mapping[future]
-        if section_type == "heading":
+        if section_type == 'heading':
             if isinstance(result, list) and len(result) > 0:
                 detailed_content = result[0]
             else:
@@ -611,27 +562,23 @@ def detail_generation_node(state: RequirementState) -> RequirementState:
         detailed_sections.append(detailed_content)
 
     return {
-        "messages": state.get("messages", [])
-        + [
-            AIMessage(
-                content="各セクションの詳細内容を生成しました。最終ドキュメントを統合します。"
-            )
-        ],
-        "detailed_sections": detailed_sections,
-        "current_phase": RequirementsPhase.DOCUMENT_INTEGRATION,
+        'messages': state.get('messages', [])
+        + [AIMessage(content='各セクションの詳細内容を生成しました。最終ドキュメントを統合します。')],
+        'detailed_sections': detailed_sections,
+        'current_phase': RequirementsPhase.DOCUMENT_INTEGRATION,
     }
 
 
 def document_integration_node(state: RequirementState) -> RequirementState:
     """要求定義書をドキュメントツールに統合するノード"""
-    print("要求定義ドキュメントをドキュメントツールに統合します...")
-    detailed_sections = state.get("detailed_sections", [])
-    requirement = state.get("requirement")
+    print('要求定義ドキュメントをドキュメントツールに統合します...')
+    detailed_sections = state.get('detailed_sections', [])
+    requirement = state.get('requirement')
     if not detailed_sections:
-        err_msg = "エラー: 詳細セクションが生成されていません。詳細生成に戻ります。"
+        err_msg = 'エラー: 詳細セクションが生成されていません。詳細生成に戻ります。'
         return {
-            "messages": state.get("messages", []) + [AIMessage(content=err_msg)],
-            "current_phase": RequirementsPhase.DETAIL_GENERATION,
+            'messages': state.get('messages', []) + [AIMessage(content=err_msg)],
+            'current_phase': RequirementsPhase.DETAIL_GENERATION,
         }
 
     integration_system_msg = """あなたは経験豊富なテクニカルライターです。
@@ -660,30 +607,28 @@ def document_integration_node(state: RequirementState) -> RequirementState:
 """
     parser = PydanticOutputParser(pydantic_object=RequirementDocument)
     intergration_prompt = ChatPromptTemplate.from_messages(
-        [("system", integration_system_msg), ("human", integration_user_msg)]
+        [('system', integration_system_msg), ('human', integration_user_msg)]
     ).partial(format_instructions=parser.get_format_instructions())
 
-    detailed_sections_text = "\n\n".join(
+    detailed_sections_text = '\n\n'.join(
         [
-            f"## {section.section_title}"
-            + (f"\n### {section.heading}" if section.heading else "")
-            + f"\n{section.markdown_content}"
-            for section in state.get("detailed_sections", [])
+            f'## {section.section_title}' + (f'\n### {section.heading}' if section.heading else '') + f'\n{section.markdown_content}'
+            for section in state.get('detailed_sections', [])
         ]
     )
-    project_name = requirement.project_name or "プロジェクト名未設定"
+    project_name = requirement.project_name or 'プロジェクト名未設定'
     final_markdown = intergration_prompt | llm | parser
     final_document: RequirementDocument = final_markdown.invoke(
-        {"project_name": project_name, "detailed_sections": detailed_sections_text}
+        {'project_name': project_name, 'detailed_sections': detailed_sections_text}
     )
     if not final_document:
-        err_msg = "エラー: ドキュメントの統合に失敗しました。"
+        err_msg = 'エラー: ドキュメントの統合に失敗しました。'
         return {
-            "messages": state.get("messages", []) + [AIMessage(content=err_msg)],
-            "current_phase": RequirementsPhase.DOCUMENT_INTEGRATION,
+            'messages': state.get('messages', []) + [AIMessage(content=err_msg)],
+            'current_phase': RequirementsPhase.DOCUMENT_INTEGRATION,
         }
 
-    file_path = f"outputs/{project_name.replace(' ', '_')}_biz_requirement.md"
+    file_path = f'outputs/{project_name.replace(" ", "_")}_biz_requirement.md'
     saved_document(final_document, file_path)
     completion_message = f"""
 要求定義書の作成が完了しました！
@@ -695,47 +640,47 @@ def document_integration_node(state: RequirementState) -> RequirementState:
 ご質問や修正が必要な点がありましたら、お気軽にお申し付けください。
 """
     return {
-        "messages": state.get("messages", []) + [AIMessage(content=completion_message)],
-        "document": final_document,
-        "current_phase": END,
+        'messages': state.get('messages', []) + [AIMessage(content=completion_message)],
+        'document': final_document,
+        'current_phase': END,
     }
 
 
 def build_graph() -> CompiledGraph:
     graph = StateGraph(RequirementState)
-    graph.add_node("intro", introduction_node)
-    graph.add_node("followup", followup_node)
-    graph.add_node("help", help_node)
-    graph.add_node("outline_generation_node", outline_generation_node)
-    graph.add_node("detail_generation", detail_generation_node)
-    graph.add_node("document_integration", document_integration_node)
+    graph.add_node('intro', introduction_node)
+    graph.add_node('followup', followup_node)
+    graph.add_node('help', help_node)
+    graph.add_node('outline_generation_node', outline_generation_node)
+    graph.add_node('detail_generation', detail_generation_node)
+    graph.add_node('document_integration', document_integration_node)
 
     graph.set_conditional_entry_point(
         decide_entry_point,
         {
-            "intro": "intro",
-            "followup": "followup",
-            "help": "help",
+            'intro': 'intro',
+            'followup': 'followup',
+            'help': 'help',
         },
     )
-    graph.add_edge("intro", "followup")
+    graph.add_edge('intro', 'followup')
     graph.add_conditional_edges(
-        "followup",
+        'followup',
         decide_next_from_followup,
         {
-            "outline_generation_node": "outline_generation_node",
-            "followup": "followup",
-            "help": "help",
+            'outline_generation_node': 'outline_generation_node',
+            'followup': 'followup',
+            'help': 'help',
         },
     )
     graph.add_conditional_edges(
-        "help",
+        'help',
         decide_next_from_help,
         {
-            "followup": "followup",
+            'followup': 'followup',
         },
     )
-    graph.add_edge("outline_generation_node", "detail_generation")
-    graph.add_edge("detail_generation", "document_integration")
-    graph.add_edge("document_integration", END)
+    graph.add_edge('outline_generation_node', 'detail_generation')
+    graph.add_edge('detail_generation', 'document_integration')
+    graph.add_edge('document_integration', END)
     return graph.compile(checkpointer=check_pointer)
