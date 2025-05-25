@@ -1,7 +1,8 @@
 <!-- I want to review in Japanese. -->
 <!-- for GitHub Copilot review rule -->
 
-# プルリクエスト概要
+## 注意事項
+- Pull Request、コメントはすべて必ず日本語で記述してください
 
 ## 変更内容
 <!-- この変更で何を実装・修正したかを簡潔に記載してください -->
