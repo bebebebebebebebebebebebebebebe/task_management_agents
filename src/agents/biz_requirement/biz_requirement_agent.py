@@ -1,3 +1,17 @@
+"""ビジネス要件定義エージェント。
+
+このモジュールは、非技術者とのインタラクティブな対話を通じて
+ビジネス要件を収集し、要件定義書を自動生成するAIエージェントを提供します。
+
+エージェントはLangGraphを使用してマルチフェーズワークフローを実行し、
+以下の段階を経て要件定義書を作成します：
+1. 導入・挨拶
+2. インタラクティブな要件ヒアリング
+3. 動的アウトライン生成
+4. 詳細コンテンツ生成（並列処理）
+5. 最終ドキュメント統合
+"""
+
 import asyncio
 import os
 import uuid
@@ -78,7 +92,23 @@ logger = get_logger(__name__)
 
 
 class BizRequirementAgent(AgentGraphBuilder):
+    """ビジネス要件定義エージェント。
+
+    非技術者とのインタラクティブな対話を通じてビジネス要件を収集し、
+    構造化された要件定義書を自動生成するAIエージェントです。
+
+    LangGraphベースのマルチフェーズワークフローを使用して、
+    導入からドキュメント統合まで一連のプロセスを管理します。
+
+    Attributes:
+        _compiled_graph (CompiledGraph | None): コンパイル済みのワークフローグラフ
+    """
+
     def __init__(self):
+        """BizRequirementAgentを初期化します。
+
+        RequirementStateを状態オブジェクトとして使用してワークフローを構築します。
+        """
         super().__init__(state_object=RequirementState)
         self._compiled_graph = None
 
@@ -131,7 +161,17 @@ class BizRequirementAgent(AgentGraphBuilder):
         return self._compiled_graph
 
     def _decide_entry_point(self, state: RequirementState):
-        """エントリーポイントを決定する"""
+        """ワークフローのエントリーポイントを決定します。
+
+        ユーザーの状態（ヘルプ要求、進行フェーズ）に基づいて、
+        適切な開始ノードを選択します。
+
+        Args:
+            state: 現在の要件収集状態
+
+        Returns:
+            str: 次のノード名（'help', 'followup', 'intro'）
+        """
         if state.get('user_wants_help'):
             return 'help'
         elif state.get('current_phase') and state['current_phase'] != RequirementsPhase.INTRODUCTION:
@@ -139,7 +179,17 @@ class BizRequirementAgent(AgentGraphBuilder):
         return 'intro'
 
     def _decide_next_from_followup(self, state: RequirementState):
-        """フォローアップノードからの次の遷移先を決定する"""
+        """フォローアップノードからの次の遷移先を決定します。
+
+        ユーザーの要求（ヘルプ、インタビュー完了）に基づいて、
+        次のワークフローステップを判断します。
+
+        Args:
+            state: 現在の要件収集状態
+
+        Returns:
+            str: 次のノード名（'help', 'outline_generation', 'followup'）
+        """
         if state.get('user_wants_help'):
             return 'help'
         elif state.get('interview_complete') and state.get('current_phase') == RequirementsPhase.OUTLINE_GENERATION:
@@ -147,11 +197,30 @@ class BizRequirementAgent(AgentGraphBuilder):
         return 'followup'
 
     def _decide_next_from_help(self, state: RequirementState):
-        """ヘルプノードからの次の遷移先を決定する"""
+        """ヘルプノードからの次の遷移先を決定します。
+
+        ヘルプ提供後は常にフォローアップノードに戻ります。
+
+        Args:
+            state: 現在の要件収集状態
+
+        Returns:
+            str: 次のノード名（'followup'）
+        """
         return 'followup'
 
     def _introduction_node(self, state: RequirementState) -> RequirementState:
-        """初期の導入メッセージを提供するノード"""
+        """初期の導入メッセージを提供するノード。
+
+        エージェントの目的を説明し、必須項目の概要を提示して
+        ユーザーとのインタラクションを開始します。
+
+        Args:
+            state: 現在の要件収集状態
+
+        Returns:
+            RequirementState: 更新された状態（導入メッセージ、初期設定を含む）
+        """
         state['current_phase'] = RequirementsPhase.INTRODUCTION
         mandatory_list = '\n'.join([f'- {QUESTION_TEMPLATES[key]}' for key in MANDATORY])
 
@@ -176,7 +245,17 @@ class BizRequirementAgent(AgentGraphBuilder):
         }
 
     def _help_node(self, state: RequirementState) -> RequirementState:
-        """専門用語の説明を提供するノード"""
+        """専門用語の説明を提供するノード。
+
+        ユーザーが「ヘルプ」を要求した際に、ビジネス要件定義に関連する
+        専門用語の分かりやすい説明を提供します。
+
+        Args:
+            state: 現在の要件収集状態
+
+        Returns:
+            RequirementState: 更新された状態（ヘルプメッセージを含む）
+        """
         term_explanations = '\n'.join([f'・{term}： {explanation}' for term, explanation in TERM_EXPLANATIONS.items()])
 
         help_message_content = f"""【専門用語の説明】
@@ -191,7 +270,17 @@ class BizRequirementAgent(AgentGraphBuilder):
         }
 
     def _followup_node(self, state: RequirementState) -> RequirementState:
-        """ユーザー入力に基づいて要件情報を更新し、次のアクションを決定するノード"""
+        """ユーザー入力に基づいて要件情報を更新し、次のアクションを決定するノード。
+
+        ユーザーからの回答を解析して要件情報を更新し、
+        必須項目・任意項目の収集状況に応じて次の質問や処理を決定します。
+
+        Args:
+            state: 現在の要件収集状態
+
+        Returns:
+            RequirementState: 更新された状態（要件情報、次のアクションを含む）
+        """
         user_message = self._get_last_user_message(state)
         if not user_message:
             user_message = interrupt('ユーザの入力を待っています。')
@@ -259,7 +348,17 @@ class BizRequirementAgent(AgentGraphBuilder):
         }
 
     async def _detail_generation_node(self, state: RequirementState) -> RequirementState:
-        """要求定義書の詳細を生成するノード"""
+        """要求定義書の詳細を生成するノード。
+
+        生成されたアウトラインに基づいて、各セクション・見出しの
+        詳細コンテンツを並列処理で生成します。
+
+        Args:
+            state: 現在の要件収集状態（動的アウトライン、要件情報を含む）
+
+        Returns:
+            RequirementState: 更新された状態（詳細セクション情報を含む）
+        """
         logger.info('要求定義ドキュメントの詳細を動的に生成します...')
         dynamic_outline = state.get('dynamic_outline')
         # アウトラインが生成されているか確認
@@ -328,7 +427,17 @@ class BizRequirementAgent(AgentGraphBuilder):
         }
 
     def _document_integration_node(self, state: RequirementState) -> RequirementState:
-        """要求定義書をドキュメントツールに統合するノード"""
+        """要求定義書をドキュメントツールに統合するノード。
+
+        生成された詳細セクションを統合して最終的な要件定義書を作成し、
+        マークダウンファイルとして保存します。
+
+        Args:
+            state: 現在の要件収集状態（詳細セクション、要件情報を含む）
+
+        Returns:
+            RequirementState: 更新された状態（完成したドキュメントを含む）
+        """
         logger.info('要求定義ドキュメントをドキュメントツールに統合します...')
         detailed_sections = state.get('detailed_sections', [])
         requirement = state.get('requirement')
@@ -412,7 +521,20 @@ class BizRequirementAgent(AgentGraphBuilder):
         section_title: str,
         heading: str | None,
     ):
-        """セクションやヘッディングの詳細内容を生成するタスク"""
+        """セクションやヘッディングの詳細内容を生成するタスク。
+
+        指定されたセクションまたは見出しに対して、プロジェクト情報と
+        アウトライン構造に基づいた詳細なマークダウンコンテンツを生成します。
+
+        Args:
+            requirement: プロジェクトのビジネス要件情報
+            dynamic_outline: 動的生成されたドキュメントアウトライン
+            section_title: 対象セクションのタイトル
+            heading: 対象見出し（セクションレベルの場合はNone）
+
+        Returns:
+            DetailedSectionContent: 生成された詳細コンテンツ
+        """
         detail_system_msg = """あなたは経験豊富なプロジェクトマネージャーで、要求定義書の作成に精通しています。
 提供されたプロジェクト情報とアウトライン構造に基づいて、要求定義書の各セクションの詳細なコンテンツをマークダウン形式で作成してください。
 
@@ -458,14 +580,32 @@ class BizRequirementAgent(AgentGraphBuilder):
         return result
 
     def _get_last_user_message(self, state: RequirementState) -> str:
-        """最後のユーザーのメッセージを取得"""
+        """最後のユーザーのメッセージを取得します。
+
+        Args:
+            state: 現在の要件収集状態
+
+        Returns:
+            str: 最後のユーザーメッセージの内容（存在しない場合は空文字）
+        """
         if state.get('messages', []) and isinstance(state['messages'][-1], HumanMessage):
             return state['messages'][-1].content
         else:
             return ''
 
     def _handle_special_commands(self, state: RequirementState, user_message: str) -> RequirementState:
-        """ユーザーの特殊なコマンドを処理"""
+        """ユーザーの特殊なコマンドを処理します。
+
+        「ヘルプ」「ドキュメント作成」などの特殊コマンドを検出し、
+        適切な状態変更を行います。
+
+        Args:
+            state: 現在の要件収集状態
+            user_message: ユーザーからの入力メッセージ
+
+        Returns:
+            RequirementState | None: 特殊コマンドに対応する状態更新（該当なしの場合はNone）
+        """
         if user_message.lower() in ['ヘルプ', 'help', '用語', 'わからない言葉がある']:
             return {'user_wants_help': True}
 
@@ -493,7 +633,17 @@ class BizRequirementAgent(AgentGraphBuilder):
         return None
 
     def _update_requirements(self, state: RequirementState, user_message: str) -> ProjectBusinessRequirement:
-        """ユーザー入力に基づいて要件情報を更新"""
+        """ユーザー入力に基づいて要件情報を更新します。
+
+        ユーザーの回答を解析し、現在の要件情報に統合して更新します。
+
+        Args:
+            state: 現在の要件収集状態
+            user_message: ユーザーからの入力メッセージ
+
+        Returns:
+            ProjectBusinessRequirement: 更新された要件情報
+        """
         current_requirement = state.get('requirement') or ProjectBusinessRequirement()
         if user_message and not state.get('user_wants_help', False):  # ヘルプコマンドの場合は更新しない
             current_requirement = self._parse_user_response(user_message, current_requirement)
@@ -502,7 +652,18 @@ class BizRequirementAgent(AgentGraphBuilder):
         return current_requirement
 
     def _parse_user_response(self, user_message: str, current_requirement: ProjectBusinessRequirement) -> ProjectBusinessRequirement:
-        """ユーザーの回答を解析し、要件情報を更新"""
+        """ユーザーの回答を解析し、要件情報を更新します。
+
+        LLMを使用してユーザーの自然言語回答から構造化された要件情報を抽出し、
+        不明な項目については合理的な推論を行います。
+
+        Args:
+            user_message: ユーザーからの入力メッセージ
+            current_requirement: 現在の要件情報
+
+        Returns:
+            ProjectBusinessRequirement: 更新された要件情報
+        """
         current_info_json = current_requirement.model_dump_json(indent=2, exclude_none=True)
 
         parse_system_msg = """あなたは要求定義の専門家です。ユーザーの回答から要件情報を正確に抽出し、必要に応じて推論してください。
@@ -547,7 +708,14 @@ class BizRequirementAgent(AgentGraphBuilder):
         return project_business_requirement
 
     def _get_missing_mandatory_fields(self, requirement: ProjectBusinessRequirement | None) -> list[str]:
-        """必須項目の中で不足しているフィールドを取得"""
+        """必須項目の中で不足しているフィールドを取得します。
+
+        Args:
+            requirement: 現在の要件情報（Noneの場合は全必須項目が不足）
+
+        Returns:
+            list[str]: 不足している必須項目のフィールド名リスト
+        """
         if requirement is None:
             return MANDATORY
 
@@ -561,7 +729,14 @@ class BizRequirementAgent(AgentGraphBuilder):
         return missing_fields
 
     def _get_missing_optional_fields(self, requirement: ProjectBusinessRequirement | None) -> list[str]:
-        """任意項目の中で不足しているフィールドを取得"""
+        """任意項目の中で不足しているフィールドを取得します。
+
+        Args:
+            requirement: 現在の要件情報（Noneの場合は全任意項目が不足）
+
+        Returns:
+            list[str]: 不足している任意項目のフィールド名リスト
+        """
         if requirement is None:
             return OPTIONAL
 
@@ -575,14 +750,32 @@ class BizRequirementAgent(AgentGraphBuilder):
         return missing_fields
 
     def _build_questions(self, missing_fields: list[str], batch_size: int = 3) -> str:
-        """不足フィールドに関する質問文を構築"""
+        """不足フィールドに関する質問文を構築します。
+
+        Args:
+            missing_fields: 不足しているフィールド名のリスト
+            batch_size: 一度に含める質問の最大数
+
+        Returns:
+            str: フォーマットされた質問文
+        """
         questions = [QUESTION_TEMPLATES[field] for field in missing_fields[:batch_size]]
         return '\n'.join([f'- {question}' for question in questions])
 
     def _handle_updated_requirement_state(
         self, current_requirement: ProjectBusinessRequirement, state: RequirementState
     ) -> RequirementState:
-        """要件情報が更新された場合の処理"""
+        """要件情報が更新された場合の処理を行います。
+
+        必須項目と任意項目の収集状況を確認し、適切な次のアクションを決定します。
+
+        Args:
+            current_requirement: 更新された要件情報
+            state: 現在の要件収集状態
+
+        Returns:
+            RequirementState: 次のアクションに対応する更新された状態
+        """
         missing_mandatory_fields = self._get_missing_mandatory_fields(current_requirement)
         missing_optional_fields = self._get_missing_optional_fields(current_requirement)
         is_user_responded = state.get('messages', []) and isinstance(state['messages'][-1], HumanMessage)
@@ -608,7 +801,15 @@ class BizRequirementAgent(AgentGraphBuilder):
         }
 
     def _generate_ai_response_complete_madatory_case(self, is_asked_for_optional: bool, missing_optional_fields: list[str]) -> str:
-        """必須項目が揃った場合の応答を生成"""
+        """必須項目が揃った場合の応答を生成します。
+
+        Args:
+            is_asked_for_optional: 任意項目について既に質問したかどうか
+            missing_optional_fields: 不足している任意項目のリスト
+
+        Returns:
+            str: ユーザーへの応答メッセージ
+        """
         if missing_optional_fields and is_asked_for_optional:  # 任意項目が不足している場合
             optional_questions = self._build_questions(missing_optional_fields[:2])
             return f"""
@@ -628,7 +829,15 @@ class BizRequirementAgent(AgentGraphBuilder):
 """
 
     def _generate_ai_response_incomplete_mandatory_case(self, is_user_responded: bool, missing_mandatory_fields: list[str]) -> str:
-        """必須項目が不足している場合の応答を生成"""
+        """必須項目が不足している場合の応答を生成します。
+
+        Args:
+            is_user_responded: ユーザーが既に何らかの回答をしたかどうか
+            missing_mandatory_fields: 不足している必須項目のリスト
+
+        Returns:
+            str: ユーザーへの応答メッセージ
+        """
         questions_to_ask = self._build_questions(missing_mandatory_fields)
         if not is_user_responded:  # ユーザーがまだ何も答えていない場合（初めての質問）
             return f"""プロジェクトについて詳しく教えていただけますか？
@@ -649,7 +858,15 @@ class BizRequirementAgent(AgentGraphBuilder):
 """
 
     def _saved_document(self, requirement_document: RequirementDocument, file_path: str) -> None:
-        """生成した要求定義書をファイルに保存"""
+        """生成した要求定義書をファイルに保存します。
+
+        Args:
+            requirement_document: 生成された要求定義書
+            file_path: 保存先ファイルパス
+
+        Raises:
+            ValueError: ドキュメントが空の場合
+        """
         if not requirement_document.markdown_text:
             raise ValueError('RequirementDocument is empty.')
 
