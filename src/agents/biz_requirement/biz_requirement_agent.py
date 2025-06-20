@@ -21,6 +21,7 @@ from agents.biz_requirement.schemas import (
     RequirementState,
 )
 from agents.core.agent_builder import AgentGraphBuilder
+from utils.logger import get_logger
 
 # 必須項目と任意項目を分ける
 MANDATORY = [
@@ -71,6 +72,9 @@ GOOGLE_GENAI_MODEL = 'models/gemini-1.5-pro'
 llm = ChatGoogleGenerativeAI(model=GOOGLE_GENAI_MODEL, temperature=0.7)
 check_pointer = InMemorySaver()
 config = {'configurable': {'thread_id': uuid.uuid4()}}
+
+# ロガーを初期化
+logger = get_logger(__name__)
 
 
 class BizRequirementAgent(AgentGraphBuilder):
@@ -208,7 +212,7 @@ class BizRequirementAgent(AgentGraphBuilder):
 
     def _outline_generation_node(self, state: RequirementState) -> RequirementState:
         """要求定義書のアウトラインを生成するノード"""
-        print('要求定義ドキュメントのアウトラインを動的に生成します...')
+        logger.info('要求定義ドキュメントのアウトラインを動的に生成します...')
         requirement = state.get('requirement')
         if not requirement:
             err_msg = 'エラー: アウトライン生成のための要求情報がありません。ヒアリングに戻ります。'
@@ -256,7 +260,7 @@ class BizRequirementAgent(AgentGraphBuilder):
 
     async def _detail_generation_node(self, state: RequirementState) -> RequirementState:
         """要求定義書の詳細を生成するノード"""
-        print('要求定義ドキュメントの詳細を動的に生成します...')
+        logger.info('要求定義ドキュメントの詳細を動的に生成します...')
         dynamic_outline = state.get('dynamic_outline')
         # アウトラインが生成されているか確認
         if not dynamic_outline:
@@ -325,7 +329,7 @@ class BizRequirementAgent(AgentGraphBuilder):
 
     def _document_integration_node(self, state: RequirementState) -> RequirementState:
         """要求定義書をドキュメントツールに統合するノード"""
-        print('要求定義ドキュメントをドキュメントツールに統合します...')
+        logger.info('要求定義ドキュメントをドキュメントツールに統合します...')
         detailed_sections = state.get('detailed_sections', [])
         requirement = state.get('requirement')
         if not detailed_sections:
@@ -493,7 +497,7 @@ class BizRequirementAgent(AgentGraphBuilder):
         current_requirement = state.get('requirement') or ProjectBusinessRequirement()
         if user_message and not state.get('user_wants_help', False):  # ヘルプコマンドの場合は更新しない
             current_requirement = self._parse_user_response(user_message, current_requirement)
-            print(f'現在の収集済み要件:\n{current_requirement.model_dump_json(indent=2, exclude_none=True)}')
+            logger.info(f'現在の収集済み要件:\n{current_requirement.model_dump_json(indent=2, exclude_none=True)}')
 
         return current_requirement
 
@@ -653,4 +657,4 @@ class BizRequirementAgent(AgentGraphBuilder):
         with open(file_path, 'w') as f:
             f.write(requirement_document.markdown_text)
 
-        print(f'ファイルを保存しました: {file_path}')
+        logger.info(f'ファイルを保存しました: {file_path}')
