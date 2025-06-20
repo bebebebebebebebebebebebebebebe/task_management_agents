@@ -76,9 +76,13 @@ config = {'configurable': {'thread_id': uuid.uuid4()}}
 class BizRequirementAgent(AgentGraphBuilder):
     def __init__(self):
         super().__init__(state_object=RequirementState)
+        self._compiled_graph = None
 
     def build_graph(self) -> CompiledGraph:
         """要件定義書作成のワークフローグラフを構築する"""
+        if self._compiled_graph is not None:
+            return self._compiled_graph
+
         # ノードの追加
         self.workflow.add_node('intro', self._introduction_node)
         self.workflow.add_node('followup', self._followup_node)
@@ -119,7 +123,8 @@ class BizRequirementAgent(AgentGraphBuilder):
         self.workflow.add_edge('detail_generation', 'document_integration')
         self.workflow.add_edge('document_integration', END)
 
-        return self.workflow.compile(checkpointer=check_pointer)
+        self._compiled_graph = self.workflow.compile(checkpointer=check_pointer)
+        return self._compiled_graph
 
     def _decide_entry_point(self, state: RequirementState):
         """エントリーポイントを決定する"""
