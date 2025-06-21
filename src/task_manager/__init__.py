@@ -1,4 +1,4 @@
-from agents.core.agent_builder import AgentGraphBuilder
+from agents.biz_requirement.biz_requirement_agent import BizRequirementAgent
 from common.config import settings
 
 
