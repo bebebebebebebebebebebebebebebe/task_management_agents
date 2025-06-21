@@ -380,9 +380,9 @@ class BizRequirementAgent(AgentGraphBuilder):
             }
 
         detailed_sections = []
-        futures = []
-        task_mapping = {}
+        task_info_list = []
 
+        # タスクと関連情報を収集
         for section in dynamic_outline.suggested_outline:
             generation_task = self._detail_generation_task(
                 requirement=requirement,
@@ -390,9 +390,7 @@ class BizRequirementAgent(AgentGraphBuilder):
                 section_title=section.section_title,
                 heading=None,
             )
-            section_future = asyncio.create_task(generation_task)
-            futures.append(section_future)
-            task_mapping[section_future.get_name()] = ('section', section.section_title, None)
+            task_info_list.append((generation_task, 'section', section.section_title, None))
 
             for heading in section.headings:
                 heading_task = self._detail_generation_task(
@@ -401,23 +399,15 @@ class BizRequirementAgent(AgentGraphBuilder):
                     section_title=section.section_title,
                     heading=heading,
                 )
-                heading_future = asyncio.create_task(heading_task)
-                futures.append(heading_future)
-                task_mapping[heading_future.get_name()] = ('heading', section.section_title, heading)
+                task_info_list.append((heading_task, 'heading', section.section_title, heading))
 
-        results = await asyncio.gather(*futures)
+        # 全タスクを並列実行
+        tasks = [task_info[0] for task_info in task_info_list]
+        results = await asyncio.gather(*tasks)
 
+        # 結果を処理
         for result in results:
-            section_type, section_title, heading = task_mapping[result.get_name()]
-            if section_type == 'heading':
-                if isinstance(result, list) and len(result) > 0:
-                    detailed_content = result[0]
-                else:
-                    detailed_content = result
-            else:
-                detailed_content = result
-
-            detailed_sections.append(detailed_content)
+            detailed_sections.append(result)
 
         return {
             'messages': state.get('messages', [])
@@ -544,7 +534,13 @@ class BizRequirementAgent(AgentGraphBuilder):
 - 読みやすく、構造化されたマークダウン形式で出力する
 - 図表の説明が必要な場合は、適切にプレースホルダーを入れる
 - 専門用語は必要に応じて簡潔に説明を付ける
-- 文書全体の一貫性と流れを保つ"""
+- 文書全体の一貫性と流れを保つ
+
+重要: JSON出力時のエスケープ処理:
+- マークダウンコンテンツ内でバックスラッシュ（\\）は二重エスケープ（\\\\）する
+- アスタリスク（*）は単純なマークダウン記法として使用し、エスケープは不要
+- 必須項目の表示には「*」（アスタリスク）ではなく「※」（米印）や「(必須)」を使用する
+- JSON文字列として有効になるよう、すべての特殊文字を適切に処理する"""
 
         detail_user_msg = """以下のセクションのマークダウンコンテンツを作成してください:
 セクション: {section_title}
@@ -559,7 +555,10 @@ class BizRequirementAgent(AgentGraphBuilder):
 思考プロセス（Chain of Thought）:
 どのような思考プロセスでこの内容に至ったのか、具体的な理由や判断基準も合わせて説明してください。
 
-重要: 応答は配列形式ではなく、単一のJSONオブジェクトとして返してください。
+重要:
+- 応答は配列形式ではなく、単一のJSONオブジェクトとして返してください
+- マークダウンコンテンツ内で特殊文字を使用する場合は、JSON文字列として有効になるよう注意してください
+- 必須項目には「※」または「(必須)」を使用し、エスケープが必要な文字は避けてください
 
 出力形式の指示に従い、JSONオブジェクトで結果を返してください:
 {format_instructions}
@@ -571,7 +570,7 @@ class BizRequirementAgent(AgentGraphBuilder):
             format_instructions=parser.get_format_instructions(),
         )
         chain = prompt | llm | parser
-        result = chain.ainvoke(
+        result = await chain.ainvoke(
             {
                 'section_title': section_title,
                 'heading': heading,
