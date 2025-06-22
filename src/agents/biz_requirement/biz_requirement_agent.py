@@ -447,7 +447,27 @@ class BizRequirementAgent(AgentGraphBuilder):
 - セクション間のスムーズな遷移を確保する
 - 適切な目次と見出しレベルを設定する
 - マークダウンの書式を正確に適用する
-- 専門用語の使用に一貫性を持たせる"""
+- 専門用語の使用に一貫性を持たせる
+
+**重要: 目次とアンカーリンク機能の実装**
+- 文書の先頭に「目次」セクションを必ず作成してください
+- 各主要セクションにはアンカーID {{#section-id}} を付与してください
+- 目次では [セクション名](#section-id) 形式でリンクを作成してください
+- アンカーIDは小文字、ハイフン区切りで統一してください（例: {{#project-overview}}）
+
+**視覚的フォーマットの改善**
+- ステークホルダー、制約事項、リスク等はテーブル形式で整理してください
+- 重要な情報は **太字** や `コード形式` で強調してください
+- セクション間に --- (水平線) を適切に配置してください
+- > 引用形式を使用して重要な注意事項やポイントを強調してください
+- 目標やKPIは箇条書きで明確に表示してください
+
+**改行・スペーシングの標準化**
+- セクション見出しの前後には空行を1行ずつ配置してください
+- パラグラフ間には適切な空行を入れてください
+- リスト項目は適切にインデントし、項目間に空行は入れないでください
+- テーブルの前後には空行を配置してください
+- 長い段落は適切に分割し、読みやすさを重視してください"""
 
         integration_user_msg = """以下の詳細セクションを統合して、完全な要求定義書を作成してください:
 
@@ -456,8 +476,44 @@ class BizRequirementAgent(AgentGraphBuilder):
 セクション詳細:
 {detailed_sections}
 
-整合性と流れに注意し、マークダウン形式で最終ドキュメントを作成してください。
-ドキュメントの先頭には適切な見出しとプロジェクト名を含めてください。
+**ドキュメント構成の要件:**
+1. 文書タイトル（プロジェクト名）
+2. 目次セクション（必須）- 全主要セクションへのリンクを含む
+3. 各セクションには適切なアンカーID付与
+4. 整合性と流れを重視した内容構成
+
+**マークダウン例:**
+```
+# プロジェクト要件定義書
+
+## 目次 {{#table-of-contents}}
+- [プロジェクト概要](#project-overview)
+- [背景と目的](#background-and-objectives)
+- [ステークホルダー](#stakeholders)
+
+---
+
+## プロジェクト概要 {{#project-overview}}
+
+> **プロジェクト目標**: システムの効率化により業務時間を **30%削減**
+
+### 主要な成果物
+- 新規Webアプリケーション
+- 既存システムとの連携機能
+- ユーザートレーニング資料
+
+---
+
+## ステークホルダー {{#stakeholders}}
+
+| 役割 | 氏名・組織 | 期待値 |
+|------|------------|--------|
+| プロジェクトオーナー | 営業部長 | 売上向上 |
+| エンドユーザー | 営業担当者 | 使いやすさ |
+| 開発チーム | IT部門 | 技術的実現性 |
+
+---
+```
 
 出力形式の指示に従い、JSONオブジェクトで結果を返してください:
 {format_instructions}
@@ -467,14 +523,30 @@ class BizRequirementAgent(AgentGraphBuilder):
             [('system', integration_system_msg), ('human', integration_user_msg)]
         ).partial(format_instructions=parser.get_format_instructions())
 
-        detailed_sections_text = '\n\n'.join(
-            [
-                f'## {section.section_title}'
-                + (f'\n### {section.heading}' if section.heading else '')
-                + f'\n{section.markdown_content}'
-                for section in state.get('detailed_sections', [])
-            ]
-        )
+        # アンカーID生成用のヘルパー関数
+        def generate_anchor_id(title: str) -> str:
+            """セクションタイトルから安全なアンカーIDを生成"""
+            import re
+
+            # 小文字化、スペースをハイフンに、特殊文字を除去
+            anchor_id = re.sub(r'[^\w\s-]', '', title.lower())
+            anchor_id = re.sub(r'[\s_]+', '-', anchor_id)
+            return anchor_id.strip('-')
+
+        # セクション情報をアンカーIDの提案とともに組み立て
+        sections_info = []
+        for section in state.get('detailed_sections', []):
+            suggested_anchor = generate_anchor_id(section.section_title)
+            section_info = f"""
+セクション: {section.section_title}
+推奨アンカーID: {suggested_anchor}
+見出し: {section.heading if section.heading else 'なし'}
+内容:
+{section.markdown_content}
+"""
+            sections_info.append(section_info)
+
+        detailed_sections_text = '\n---\n'.join(sections_info)
         project_name = requirement.project_name or 'プロジェクト名未設定'
         final_markdown = intergration_prompt | llm | parser
         final_document: RequirementDocument = final_markdown.invoke(
