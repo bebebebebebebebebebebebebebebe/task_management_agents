@@ -47,6 +47,17 @@ Key features:
 - Supports Google GenAI, OpenAI, LangSmith, and Tavily API keys
 - JSON logging format via `src/utils/logger.py`
 
+### MCP (Model Context Protocol) Integration
+- **MCP Configuration**: `.mcp.json` file configures MCP servers for enhanced functionality
+- **LangSmith MCP Server**: Provides tracing, monitoring, and dataset management capabilities
+  - Command: `uvx langsmith-mcp-server`
+  - Requires `LANGSMITH_API_KEY` environment variable
+- **GitHub MCP Server**: Enables direct GitHub operations via Docker
+  - Command: `docker run ghcr.io/github/github-mcp-server`
+  - Requires `GITHUB_PERSONAL_ACCESS_TOKEN` environment variable
+  - **IMPORTANT**: All GitHub operations (PR creation, issue management, repository operations, etc.) should use the GitHub MCP Server instead of CLI commands
+- **LangSmith Integration**: Automatic trace logging and project monitoring for agent workflows
+
 ### Testing
 - Uses pytest with async support and coverage reporting
 - Tests located in `tests/` directory matching source structure
@@ -69,3 +80,11 @@ Key features:
 - その後、テストをパスさせる実装を進める
 - 実装中はテストを変更せず、コードを修正し続ける
 - すべてのテストが通過するまで繰り返す
+
+### Pre-commit Requirements
+- **MANDATORY**: コミット前に必ずテストとリントを実行する
+  - `pytest` - すべてのテストが通過することを確認
+  - `ruff check src tests` - リント検査をパス
+  - `ruff format src tests` - コードフォーマットを適用
+- テストまたはリントが失敗した場合は、修正してから再実行
+- すべてのチェックが通過した後にのみコミットを行う
