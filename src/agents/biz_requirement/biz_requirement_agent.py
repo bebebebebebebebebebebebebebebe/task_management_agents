@@ -35,6 +35,7 @@ from agents.biz_requirement.schemas import (
     RequirementState,
 )
 from agents.core.agent_builder import AgentGraphBuilder
+from common.config import settings
 from utils.logger import get_logger
 
 # 必須項目と任意項目を分ける
@@ -82,6 +83,13 @@ TERM_EXPLANATIONS = {
     'マイルストーン': 'プロジェクトの重要な節目や達成すべき中間目標のことです。',
 }
 GOOGLE_GENAI_MODEL = 'models/gemini-1.5-pro'
+
+# LangSmith設定を環境変数に適用
+if settings.LANGSMITH_TRACING:
+    os.environ['LANGCHAIN_TRACING_V2'] = 'true'
+    os.environ['LANGCHAIN_API_KEY'] = settings.LANGSMITH_API_KEY
+    os.environ['LANGCHAIN_PROJECT'] = settings.LANGSMITH_PROJECT
+    os.environ['LANGCHAIN_ENDPOINT'] = settings.LANGSMITH_ENDPOINT
 
 llm = ChatGoogleGenerativeAI(model=GOOGLE_GENAI_MODEL, temperature=0.7)
 check_pointer = InMemorySaver()
