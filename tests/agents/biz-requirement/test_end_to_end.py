@@ -155,7 +155,7 @@ def test_state_decision_logic():
 
     for case in test_cases:
         result = agent._decide_entry_point(case['state'])
-        assert result == case['expected'], f"{case['name']}のテストに失敗: 期待値 {case['expected']}, 実際 {result}"
+        assert result == case['expected'], f'{case["name"]}のテストに失敗: 期待値 {case["expected"]}, 実際 {result}'
 
     print('✅ 状態決定ロジックのテストが完了しました')
 
