@@ -3,7 +3,7 @@ from common.config import settings
 
 
 def main():
-    print(settings.LANGSMITH_PROJECT)
+    print(settings.LANGSMITH_TRACING)
 
 
 if __name__ == '__main__':
