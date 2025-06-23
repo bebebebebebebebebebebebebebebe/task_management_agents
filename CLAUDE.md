@@ -17,6 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Application Entry Points
 - **Business requirement agent**: `biz-requirement-agent` (via pyproject.toml script)
 - **Task management agents**: `task-management-agents` (via pyproject.toml script)
+- **Integrated workflow agent**: `integrated-workflow-agent` (via pyproject.toml script)
 
 ## Architecture
 
@@ -120,13 +121,15 @@ graph TD
 - Uses pytest with async support and coverage reporting
 - Tests located in `tests/` directory matching source structure
 - Test configuration in `pyproject.toml` includes `pythonpath = "./src"`
-- **Current Coverage**: 54 tests with 78% code coverage
+- **Current Coverage**: 75+ tests with comprehensive coverage
 - **Test Structure**:
   - `tests/agents/biz_requirement/` - Business requirement agent tests
   - `tests/agents/requirement_process/` - Requirement process system tests
     - `test_integration.py` - Integration and workflow tests
     - `test_orchestrator.py` - Orchestrator agent tests
     - `test_persona_agents.py` - Individual persona agent tests
+  - `tests/agents/integrated_workflow/` - Integrated workflow tests
+    - `test_integrated_workflow_agent.py` - Complete workflow testing
 
 ### Code Style
 - Ruff for linting and formatting (line length: 135)
@@ -165,9 +168,9 @@ biz-requirement-agent
 task-management-agents
 ```
 
-### Integrated Workflow (Future Enhancement)
+### Integrated Workflow
 ```bash
-# Proposed unified workflow (Issue #15)
+# Unified workflow from business requirements to technical specification
 integrated-workflow-agent
 ```
 
@@ -196,10 +199,15 @@ ruff format src tests
   - Schema integration with existing business requirement agent
   - LangGraph-based state management and parallel processing
 
-### GitHub Issue #15 - Integrated Workflow (🚧 Proposed)
+### GitHub Issue #15 - Integrated Workflow (✅ Completed)
+- **Implementation Date**: 2025-06-23
 - **Objective**: Seamless user experience with single-command execution
-- **Scope**: Combine biz-requirement-agent and task-management-agents
-- **Benefits**: Enhanced UX, automated data flow, unified error handling
+- **Key Achievements**:
+  - Unified workflow combining biz-requirement-agent and task-management-agents
+  - Comprehensive test suite with full coverage
+  - Enhanced UX with automated data flow between phases
+  - Unified error handling and progress visualization
+  - Integrated document generation with all requirement aspects
 
 ## File Structure Reference
 
@@ -210,19 +218,22 @@ src/agents/
 ├── biz_requirement/               # Business requirement collection
 │   ├── biz_requirement_agent.py
 │   └── schemas.py
-└── requirement_process/           # Technical specification generation
-    ├── main.py                    # Entry point
-    ├── orchestrator/
-    │   └── orchestrator_agent.py  # Workflow orchestration
-    ├── personas/                  # 6 specialized agents
-    │   ├── system_analyst.py
-    │   ├── ux_designer.py
-    │   ├── qa_engineer.py
-    │   ├── infrastructure_engineer.py
-    │   ├── security_specialist.py
-    │   ├── data_architect.py
-    │   └── solution_architect.py
-    └── schemas.py                 # State management models
+├── requirement_process/           # Technical specification generation
+│   ├── main.py                    # Entry point
+│   ├── orchestrator/
+│   │   └── orchestrator_agent.py  # Workflow orchestration
+│   ├── personas/                  # 6 specialized agents
+│   │   ├── system_analyst.py
+│   │   ├── ux_designer.py
+│   │   ├── qa_engineer.py
+│   │   ├── infrastructure_engineer.py
+│   │   ├── security_specialist.py
+│   │   ├── data_architect.py
+│   │   └── solution_architect.py
+│   └── schemas.py                 # State management models
+└── integrated_workflow/           # Unified workflow management
+    ├── integrated_workflow_agent.py  # Main workflow orchestrator
+    └── __init__.py
 ```
 
 # important-instruction-reminders
