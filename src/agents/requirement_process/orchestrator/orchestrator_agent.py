@@ -31,6 +31,10 @@ class RequirementProcessOrchestratorAgent(AgentGraphBuilder):
         super().__init__(state_object=RequirementProcessState)
         self._setup_persona_agents()
 
+    def _get_state_value(self, state, key, default=None):
+        """状態から値を安全に取得（dictとPydanticモデル両方に対応）"""
+        return getattr(state, key, default) or state.get(key, default) if hasattr(state, 'get') else getattr(state, key, default)
+
     def _setup_persona_agents(self):
         """ペルソナエージェントのインスタンスを準備"""
         self.persona_agents = {
@@ -82,13 +86,18 @@ class RequirementProcessOrchestratorAgent(AgentGraphBuilder):
         """システム分析フェーズの実行"""
         logger.info('システム分析フェーズを実行しています...')
 
+        # 状態オブジェクトの安全なアクセス（dictとPydanticモデル両方に対応）
+        business_requirement = self._get_state_value(state, 'business_requirement')
+        persona_outputs = self._get_state_value(state, 'persona_outputs', [])
+        completed_phases = self._get_state_value(state, 'completed_phases', [])
+
         # システムアナリストエージェントを呼び出し
-        analyst_output = self.persona_agents[PersonaRole.SYSTEM_ANALYST].execute(state['business_requirement'])
+        analyst_output = self.persona_agents[PersonaRole.SYSTEM_ANALYST].execute(business_requirement)
 
         return {
             'current_phase': RequirementProcessPhase.FUNCTIONAL_REQUIREMENTS,
-            'persona_outputs': state['persona_outputs'] + [analyst_output],
-            'completed_phases': state['completed_phases'] + [RequirementProcessPhase.SYSTEM_ANALYSIS],
+            'persona_outputs': persona_outputs + [analyst_output],
+            'completed_phases': completed_phases + [RequirementProcessPhase.SYSTEM_ANALYSIS],
             'messages': [{'role': 'system', 'content': 'システム分析が完了しました'}],
         }
 
@@ -96,15 +105,20 @@ class RequirementProcessOrchestratorAgent(AgentGraphBuilder):
         """機能要件定義フェーズの実行"""
         logger.info('機能要件定義フェーズを実行しています...')
 
-        # UXデザイナーとQAエンジニアを並行実行
-        ux_output = self.persona_agents[PersonaRole.UX_DESIGNER].execute(state['business_requirement'], state['persona_outputs'])
+        # 状態オブジェクトの安全なアクセス
+        business_requirement = self._get_state_value(state, 'business_requirement')
+        persona_outputs = self._get_state_value(state, 'persona_outputs', [])
+        completed_phases = self._get_state_value(state, 'completed_phases', [])
 
-        qa_output = self.persona_agents[PersonaRole.QA_ENGINEER].execute(state['business_requirement'], state['persona_outputs'])
+        # UXデザイナーとQAエンジニアを並行実行
+        ux_output = self.persona_agents[PersonaRole.UX_DESIGNER].execute(business_requirement, persona_outputs)
+
+        qa_output = self.persona_agents[PersonaRole.QA_ENGINEER].execute(business_requirement, persona_outputs)
 
         return {
             'current_phase': RequirementProcessPhase.NON_FUNCTIONAL_REQUIREMENTS,
-            'persona_outputs': state['persona_outputs'] + [ux_output, qa_output],
-            'completed_phases': state['completed_phases'] + [RequirementProcessPhase.FUNCTIONAL_REQUIREMENTS],
+            'persona_outputs': persona_outputs + [ux_output, qa_output],
+            'completed_phases': completed_phases + [RequirementProcessPhase.FUNCTIONAL_REQUIREMENTS],
             'messages': [{'role': 'system', 'content': '機能要件定義が完了しました'}],
         }
 
@@ -114,17 +128,18 @@ class RequirementProcessOrchestratorAgent(AgentGraphBuilder):
 
         # インフラエンジニアとセキュリティスペシャリストを並行実行
         infra_output = self.persona_agents[PersonaRole.INFRASTRUCTURE_ENGINEER].execute(
-            state['business_requirement'], state['persona_outputs']
+            self._get_state_value(state, 'business_requirement'), self._get_state_value(state, 'persona_outputs', [])
         )
 
         security_output = self.persona_agents[PersonaRole.SECURITY_SPECIALIST].execute(
-            state['business_requirement'], state['persona_outputs']
+            self._get_state_value(state, 'business_requirement'), self._get_state_value(state, 'persona_outputs', [])
         )
 
         return {
             'current_phase': RequirementProcessPhase.DATA_ARCHITECTURE,
-            'persona_outputs': state['persona_outputs'] + [infra_output, security_output],
-            'completed_phases': state['completed_phases'] + [RequirementProcessPhase.NON_FUNCTIONAL_REQUIREMENTS],
+            'persona_outputs': self._get_state_value(state, 'persona_outputs', []) + [infra_output, security_output],
+            'completed_phases': self._get_state_value(state, 'completed_phases', [])
+            + [RequirementProcessPhase.NON_FUNCTIONAL_REQUIREMENTS],
             'messages': [{'role': 'system', 'content': '非機能要件定義が完了しました'}],
         }
 
@@ -133,12 +148,14 @@ class RequirementProcessOrchestratorAgent(AgentGraphBuilder):
         logger.info('データアーキテクチャ設計フェーズを実行しています...')
 
         # データアーキテクトエージェントを呼び出し
-        data_output = self.persona_agents[PersonaRole.DATA_ARCHITECT].execute(state['business_requirement'], state['persona_outputs'])
+        data_output = self.persona_agents[PersonaRole.DATA_ARCHITECT].execute(
+            self._get_state_value(state, 'business_requirement'), self._get_state_value(state, 'persona_outputs', [])
+        )
 
         return {
             'current_phase': RequirementProcessPhase.SOLUTION_ARCHITECTURE,
-            'persona_outputs': state['persona_outputs'] + [data_output],
-            'completed_phases': state['completed_phases'] + [RequirementProcessPhase.DATA_ARCHITECTURE],
+            'persona_outputs': self._get_state_value(state, 'persona_outputs', []) + [data_output],
+            'completed_phases': self._get_state_value(state, 'completed_phases', []) + [RequirementProcessPhase.DATA_ARCHITECTURE],
             'messages': [{'role': 'system', 'content': 'データアーキテクチャ設計が完了しました'}],
         }
 
@@ -148,13 +165,13 @@ class RequirementProcessOrchestratorAgent(AgentGraphBuilder):
 
         # ソリューションアーキテクトエージェントを呼び出し
         solution_output = self.persona_agents[PersonaRole.SOLUTION_ARCHITECT].execute(
-            state['business_requirement'], state['persona_outputs']
+            self._get_state_value(state, 'business_requirement'), self._get_state_value(state, 'persona_outputs', [])
         )
 
         return {
             'current_phase': RequirementProcessPhase.INTEGRATION,
-            'persona_outputs': state['persona_outputs'] + [solution_output],
-            'completed_phases': state['completed_phases'] + [RequirementProcessPhase.SOLUTION_ARCHITECTURE],
+            'persona_outputs': self._get_state_value(state, 'persona_outputs', []) + [solution_output],
+            'completed_phases': self._get_state_value(state, 'completed_phases', []) + [RequirementProcessPhase.SOLUTION_ARCHITECTURE],
             'messages': [{'role': 'system', 'content': 'ソリューションアーキテクチャ設計が完了しました'}],
         }
 
@@ -163,11 +180,11 @@ class RequirementProcessOrchestratorAgent(AgentGraphBuilder):
         logger.info('成果物を統合しています...')
 
         # 各ペルソナの成果物を統合
-        integrated_data = self._consolidate_outputs(state['persona_outputs'])
+        integrated_data = self._consolidate_outputs(self._get_state_value(state, 'persona_outputs', []))
 
         return {
             'current_phase': RequirementProcessPhase.COMPLETE,
-            'completed_phases': state['completed_phases'] + [RequirementProcessPhase.INTEGRATION],
+            'completed_phases': self._get_state_value(state, 'completed_phases', []) + [RequirementProcessPhase.INTEGRATION],
             'messages': [{'role': 'system', 'content': '成果物統合が完了しました'}],
             **integrated_data,
         }

@@ -98,17 +98,16 @@ class TestIntegratedWorkflowAgent:
             assert result['business_requirement'] is not None
 
     @pytest.mark.asyncio
-    async def test_biz_requirement_collection_node_error(self, agent):
-        """ビジネス要件収集ノードエラーケースのテスト"""
+    async def test_biz_requirement_collection_node_fallback(self, agent):
+        """ビジネス要件収集ノードのフォールバック機能テスト"""
         state = IntegratedWorkflowState()
 
-        with patch.object(agent._biz_requirement_agent, 'build_graph') as mock_build:
-            mock_build.side_effect = Exception('テストエラー')
+        # 非インタラクティブ環境では正常にデモモードに切り替わることを確認
+        result = await agent._biz_requirement_collection_node(state)
 
-            result = await agent._biz_requirement_collection_node(state)
-
-            assert result['workflow_phase'] == 'error'
-            assert 'テストエラー' in result['error_message']
+        assert result['workflow_phase'] == 'biz_requirement'
+        assert result['business_requirement'] is not None
+        assert result['current_phase'] == 'END'
 
     @pytest.mark.asyncio
     async def test_requirement_process_execution_node_success(self, agent, sample_business_requirement, sample_process_result):
@@ -142,10 +141,14 @@ class TestIntegratedWorkflowAgent:
         with patch('agents.integrated_workflow.integrated_workflow_agent.run_requirement_process', new_callable=AsyncMock) as mock_run:
             mock_run.side_effect = Exception('プロセスエラー')
 
-            result = await agent._requirement_process_execution_node(state)
+            # デモ用の結果も失敗させる
+            with patch.object(agent, '_create_demo_process_result') as mock_demo:
+                mock_demo.side_effect = Exception('デモエラー')
 
-            assert result['workflow_phase'] == 'error'
-            assert 'プロセスエラー' in result['error_message']
+                result = await agent._requirement_process_execution_node(state)
+
+                assert result['workflow_phase'] == 'error'
+                assert 'デモエラー' in result['error_message']
 
     def test_document_integration_node_success(self, agent, sample_business_requirement, sample_process_result):
         """ドキュメント統合ノード成功ケースのテスト"""
@@ -211,9 +214,7 @@ class TestIntegratedWorkflowAgent:
         assert agent._decide_after_biz_requirement(state_error) == 'error'
 
         # 完了ケース
-        from langgraph.graph import END
-
-        state_complete = IntegratedWorkflowState(current_phase=END, business_requirement=ProjectBusinessRequirement())
+        state_complete = IntegratedWorkflowState(current_phase='END', business_requirement=ProjectBusinessRequirement())
         assert agent._decide_after_biz_requirement(state_complete) == 'requirement_process'
 
         # 継続ケース

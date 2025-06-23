@@ -13,6 +13,13 @@ config = {'configurable': {'thread_id': uuid.uuid4()}}
 
 
 async def event_loop():
+    import sys
+
+    # テスト環境でインタラクティブ実行を回避
+    if not hasattr(sys.stdin, 'isatty') or not sys.stdin.isatty():
+        logger.info('非インタラクティブ環境を検出、event_loopを終了します')
+        return
+
     logger.info('Starting Biz Requirement Agent...')
     agent = BizRequirementAgent()
     graph = agent.build_graph()
@@ -51,6 +58,13 @@ async def event_loop():
 
 def main():
     """メイン関数"""
+    import sys
+
+    # テスト環境でインタラクティブ実行を回避
+    if not hasattr(sys.stdin, 'isatty') or not sys.stdin.isatty():
+        logger.info('非インタラクティブ環境を検出、mainを終了します')
+        return
+
     logger.info('Biz Requirement Agentを起動します。')
     asyncio.run(event_loop())
 

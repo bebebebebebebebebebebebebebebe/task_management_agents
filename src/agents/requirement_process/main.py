@@ -21,7 +21,19 @@ async def run_requirement_process(business_requirement: ProjectBusinessRequireme
     orchestrator = RequirementProcessOrchestratorAgent()
 
     # 初期状態を設定
-    initial_state = RequirementProcessState(business_requirement=business_requirement, messages=[])
+    initial_state = RequirementProcessState(
+        business_requirement=business_requirement,
+        messages=[],
+        persona_outputs=[],
+        completed_phases=[],
+        active_personas=[],
+        functional_requirements=[],
+        non_functional_requirements=[],
+        data_models=[],
+        table_definitions=[],
+        errors=[],
+        warnings=[],
+    )
 
     # ワークフローグラフを構築・実行
     workflow = orchestrator.build_graph()
