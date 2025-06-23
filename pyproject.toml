@@ -27,6 +27,7 @@ dependencies = [
 [project.scripts]
 task-management-agents = "task_manager:main"
 biz-requirement-agent = "agents.biz_requirement:main"
+requirement-process-agent = "agents.requirement_process.main:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -35,7 +36,8 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = [
     "src/task_manager",
-    "src/agents/biz_requirement"
+    "src/agents/biz_requirement",
+    "src/agents/requirement_process"
 ]
 
 
