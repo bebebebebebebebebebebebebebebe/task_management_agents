@@ -17,6 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Application Entry Points
 - **Business requirement agent**: `biz-requirement-agent` (via pyproject.toml script)
 - **Task management agents**: `task-management-agents` (via pyproject.toml script)
+- **Integrated workflow agent**: `integrated-workflow-agent` (via pyproject.toml script)
 
 ## Architecture
 
@@ -42,15 +43,93 @@ Key features:
 - Specialized schemas for business requirements in `schemas.py`
 - Output documents saved to `outputs/` directory
 
+### Requirement Process Agent System
+Located in `src/agents/requirement_process/`, this comprehensive system transforms business requirements into detailed technical specifications through a multi-agent orchestration workflow.
+
+#### Architecture Overview
+- **Orchestrator Agent**: Manages the overall workflow and coordinates between persona agents
+- **6 Specialized Persona Agents**: Each handles specific aspects of requirement analysis
+- **State Management**: Uses `RequirementProcessState` for workflow coordination
+- **Output Integration**: Consolidates all agent outputs into a unified requirement specification
+
+#### Persona Agents
+1. **System Analyst Agent** (`system_analyst.py`)
+   - Analyzes business requirements and identifies functional candidates
+   - Outputs: Functional requirement list with priorities
+
+2. **UX Designer Agent** (`ux_designer.py`)
+   - Creates user stories and interaction designs
+   - Outputs: User stories, acceptance criteria, UI/UX specifications
+
+3. **QA Engineer Agent** (`qa_engineer.py`)
+   - Defines test strategies and quality standards
+   - Outputs: Test plans, quality metrics, acceptance criteria
+
+4. **Infrastructure Engineer Agent** (`infrastructure_engineer.py`)
+   - Specifies infrastructure and deployment requirements
+   - Outputs: Infrastructure architecture, deployment strategies
+
+5. **Security Specialist Agent** (`security_specialist.py`)
+   - Analyzes security requirements and defines security controls
+   - Outputs: Security requirements, threat analysis, compliance guidelines
+
+6. **Data Architect Agent** (`data_architect.py`)
+   - Designs data models and database structures
+   - Outputs: Data models, database schemas, data flow diagrams
+
+7. **Solution Architect Agent** (`solution_architect.py`)
+   - Consolidates all requirements into system architecture
+   - Outputs: System architecture, technology stack recommendations
+
+#### Workflow Process
+```mermaid
+graph TD
+    A[Business Requirement] --> B[Orchestrator Agent]
+    B --> C[System Analysis]
+    C --> D[Functional Requirements Phase]
+    D --> E[Non-Functional Requirements Phase]
+    E --> F[Data Architecture Phase]
+    F --> G[Solution Architecture Phase]
+    G --> H[Integration & Documentation]
+    H --> I[Final Requirement Specification]
+```
+
+#### Key Features
+- **Sequential Processing**: Each phase builds upon previous outputs
+- **Parallel Execution**: Multiple agents work simultaneously where appropriate
+- **Quality Validation**: Each agent validates inputs and outputs
+- **Comprehensive Testing**: 54 tests with 78% coverage
+- **Schema Compatibility**: Seamless integration with Business Requirement Agent via `ProjectBusinessRequirement`
+
 ### Configuration
 - Environment variables managed through `src/common/config.py` using Pydantic Settings
 - Supports Google GenAI, OpenAI, LangSmith, and Tavily API keys
 - JSON logging format via `src/utils/logger.py`
 
+### MCP (Model Context Protocol) Integration
+- **MCP Configuration**: `.mcp.json` file configures MCP servers for enhanced functionality
+- **LangSmith MCP Server**: Provides tracing, monitoring, and dataset management capabilities
+  - Command: `uvx langsmith-mcp-server`
+  - Requires `LANGSMITH_API_KEY` environment variable
+- **GitHub MCP Server**: Enables direct GitHub operations via Docker
+  - Command: `docker run ghcr.io/github/github-mcp-server`
+  - Requires `GITHUB_PERSONAL_ACCESS_TOKEN` environment variable
+  - **IMPORTANT**: All GitHub operations (PR creation, issue management, repository operations, etc.) should use the GitHub MCP Server instead of CLI commands
+- **LangSmith Integration**: Automatic trace logging and project monitoring for agent workflows
+
 ### Testing
 - Uses pytest with async support and coverage reporting
 - Tests located in `tests/` directory matching source structure
 - Test configuration in `pyproject.toml` includes `pythonpath = "./src"`
+- **Current Coverage**: 75+ tests with comprehensive coverage
+- **Test Structure**:
+  - `tests/agents/biz_requirement/` - Business requirement agent tests
+  - `tests/agents/requirement_process/` - Requirement process system tests
+    - `test_integration.py` - Integration and workflow tests
+    - `test_orchestrator.py` - Orchestrator agent tests
+    - `test_persona_agents.py` - Individual persona agent tests
+  - `tests/agents/integrated_workflow/` - Integrated workflow tests
+    - `test_integrated_workflow_agent.py` - Complete workflow testing
 
 ### Code Style
 - Ruff for linting and formatting (line length: 135)
@@ -69,3 +148,96 @@ Key features:
 - その後、テストをパスさせる実装を進める
 - 実装中はテストを変更せず、コードを修正し続ける
 - すべてのテストが通過するまで繰り返す
+
+### Pre-commit Requirements
+- **MANDATORY**: コミット前に必ずテストとリントを実行する
+  - `pytest` - すべてのテストが通過することを確認
+  - `ruff check src tests` - リント検査をパス
+  - `ruff format src tests` - コードフォーマットを適用
+- テストまたはリントが失敗した場合は、修正してから再実行
+- すべてのチェックが通過した後にのみコミットを行う
+
+## Usage Examples
+
+### Individual Agent Execution
+```bash
+# Business requirement collection
+biz-requirement-agent
+
+# Technical requirement specification
+task-management-agents
+```
+
+### Integrated Workflow
+```bash
+# Unified workflow from business requirements to technical specification
+integrated-workflow-agent
+```
+
+### Development Commands
+```bash
+# Run all tests
+pytest
+
+# Run specific test suite
+pytest tests/agents/requirement_process/
+
+# Check code quality
+ruff check src tests
+ruff format src tests
+```
+
+## Recent Implementation History
+
+### GitHub Issue #14 - Requirement Process Agent System (✅ Completed)
+- **Implementation Date**: 2025-06-23
+- **Commit**: c1c54f9
+- **Key Achievements**:
+  - Complete 6-persona agent system implementation
+  - Orchestrator agent with workflow management
+  - 54 comprehensive tests with 78% coverage
+  - Schema integration with existing business requirement agent
+  - LangGraph-based state management and parallel processing
+
+### GitHub Issue #15 - Integrated Workflow (✅ Completed)
+- **Implementation Date**: 2025-06-23
+- **Objective**: Seamless user experience with single-command execution
+- **Key Achievements**:
+  - Unified workflow combining biz-requirement-agent and task-management-agents
+  - Comprehensive test suite with full coverage
+  - Enhanced UX with automated data flow between phases
+  - Unified error handling and progress visualization
+  - Integrated document generation with all requirement aspects
+
+## File Structure Reference
+
+```
+src/agents/
+├── core/
+│   └── agent_builder.py          # Base class for all agents
+├── biz_requirement/               # Business requirement collection
+│   ├── biz_requirement_agent.py
+│   └── schemas.py
+├── requirement_process/           # Technical specification generation
+│   ├── main.py                    # Entry point
+│   ├── orchestrator/
+│   │   └── orchestrator_agent.py  # Workflow orchestration
+│   ├── personas/                  # 6 specialized agents
+│   │   ├── system_analyst.py
+│   │   ├── ux_designer.py
+│   │   ├── qa_engineer.py
+│   │   ├── infrastructure_engineer.py
+│   │   ├── security_specialist.py
+│   │   ├── data_architect.py
+│   │   └── solution_architect.py
+│   └── schemas.py                 # State management models
+└── integrated_workflow/           # Unified workflow management
+    ├── integrated_workflow_agent.py  # Main workflow orchestrator
+    └── __init__.py
+```
+
+# important-instruction-reminders
+Do what has been asked; nothing more, nothing less.
+NEVER create files unless they're absolutely necessary for achieving your goal.
+ALWAYS prefer editing an existing file to creating a new one.
+NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.

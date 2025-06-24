@@ -7,7 +7,6 @@
 import abc
 
 from langgraph.graph import StateGraph
-from langgraph.graph.graph import CompiledGraph
 from pydantic import BaseModel
 
 
@@ -34,7 +33,7 @@ class AgentGraphBuilder(abc.ABC):
         self.workflow = StateGraph(state_schema=state_object)
 
     @abc.abstractmethod
-    def build_graph(self) -> CompiledGraph:
+    def build_graph(self):
         """エージェントのワークフローグラフを構築します。
 
         このメソッドは具象クラスで実装する必要があります。
@@ -42,7 +41,7 @@ class AgentGraphBuilder(abc.ABC):
         完全なワークフローグラフを作成します。
 
         Returns:
-            CompiledGraph: コンパイル済みのワークフローグラフ
+            コンパイル済みのワークフローグラフ
         """
         pass
 
