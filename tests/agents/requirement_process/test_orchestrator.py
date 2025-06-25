@@ -41,7 +41,7 @@ class TestRequirementProcessOrchestratorAgent:
         # 結果を確認
         assert result['current_phase'] == RequirementProcessPhase.SYSTEM_ANALYSIS
         assert len(result['messages']) == 1
-        assert 'プロセスを開始' in result['messages'][0]['content']
+        assert 'プロセスを開始' in result['messages'][0]['content'] or 'v2.0 を開始' in result['messages'][0]['content']
 
     @patch('agents.requirement_process.orchestrator.orchestrator_agent.logger')
     def test_execute_system_analysis(self, mock_logger):

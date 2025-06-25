@@ -9,10 +9,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Development
 - **Install dependencies**: `uv sync`
-- **Run tests**: `pytest` (configured with coverage reporting)
+- **Run tests**: `uv run pytest -s` (MANDATORY: always use this command for test execution)
 - **Lint code**: `ruff check src tests`
 - **Format code**: `ruff format src tests`
-- **Run single test**: `pytest tests/path/to/test_*.py::TestClass::test_method`
+- **Run single test**: `uv run pytest -s tests/path/to/test_*.py::TestClass::test_method`
 
 ### Application Entry Points
 - **Business requirement agent**: `biz-requirement-agent` (via pyproject.toml script)
@@ -151,7 +151,7 @@ graph TD
 
 ### Pre-commit Requirements
 - **MANDATORY**: コミット前に必ずテストとリントを実行する
-  - `pytest` - すべてのテストが通過することを確認
+  - `uv run pytest -s` - すべてのテストが通過することを確認（必須コマンド）
   - `ruff check src tests` - リント検査をパス
   - `ruff format src tests` - コードフォーマットを適用
 - テストまたはリントが失敗した場合は、修正してから再実行
@@ -176,11 +176,11 @@ integrated-workflow-agent
 
 ### Development Commands
 ```bash
-# Run all tests
-pytest
+# Run all tests (MANDATORY: use this exact command)
+uv run pytest -s
 
-# Run specific test suite
-pytest tests/agents/requirement_process/
+# Run specific test suite (MANDATORY: use this exact command)
+uv run pytest -s tests/agents/requirement_process/
 
 # Check code quality
 ruff check src tests

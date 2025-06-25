@@ -1,4 +1,4 @@
-"""要件定義プロセスを管理するオーケストレーター・エージェント"""
+"""要件定義プロセスを管理するオーケストレーター・エージェント v2.0"""
 
 import logging
 from datetime import datetime
@@ -7,6 +7,7 @@ from typing import Any, Dict
 from langgraph.graph import END, START
 
 from agents.core.agent_builder import AgentGraphBuilder
+from agents.requirement_process.error_handler import ErrorHandler, ProcessError
 from agents.requirement_process.personas.data_architect import DataArchitectAgent
 from agents.requirement_process.personas.infrastructure_engineer import InfrastructureEngineerAgent
 from agents.requirement_process.personas.qa_engineer import QAEngineerAgent
@@ -14,22 +15,40 @@ from agents.requirement_process.personas.security_specialist import SecuritySpec
 from agents.requirement_process.personas.solution_architect import SolutionArchitectAgent
 from agents.requirement_process.personas.system_analyst import SystemAnalystAgent
 from agents.requirement_process.personas.ux_designer import UXDesignerAgent
+from agents.requirement_process.review_manager import ReviewManager
 from agents.requirement_process.schemas import (
     PersonaRole,
     RequirementDocument,
     RequirementProcessPhase,
     RequirementProcessState,
+    ReviewDecision,
+    ReviewStatus,
 )
 
 logger = logging.getLogger(__name__)
 
 
 class RequirementProcessOrchestratorAgent(AgentGraphBuilder):
-    """要件定義プロセスを管理するオーケストレーター・エージェント"""
+    """要件定義プロセスを管理するオーケストレーター・エージェント v2.0
 
-    def __init__(self):
+    v2.0新機能:
+    - ユーザーレビューゲート機能
+    - 高度なエラーハンドリングとリトライ
+    - 条件分岐制御
+    - バージョン管理
+    """
+
+    def __init__(self, interactive_mode: bool = True, auto_approve: bool = False):
         super().__init__(state_object=RequirementProcessState)
         self._setup_persona_agents()
+
+        # v2.0新機能マネージャー
+        self.review_manager = ReviewManager()
+        self.error_handler = ErrorHandler()
+
+        # 設定
+        self.interactive_mode = interactive_mode
+        self.auto_approve = auto_approve
 
     def _get_state_value(self, state, key, default=None):
         """状態から値を安全に取得（dictとPydanticモデル両方に対応）"""
@@ -48,9 +67,9 @@ class RequirementProcessOrchestratorAgent(AgentGraphBuilder):
         }
 
     def build_graph(self):
-        """オーケストレーター・エージェントのワークフローグラフを構築"""
+        """オーケストレーター・エージェントのワークフローグラフを構築 v2.0"""
 
-        # ノードを追加
+        # 基本ノード
         self.workflow.add_node('initialize', self._initialize_process)
         self.workflow.add_node('system_analysis', self._execute_system_analysis)
         self.workflow.add_node('functional_req_phase', self._execute_functional_requirements)
@@ -60,27 +79,85 @@ class RequirementProcessOrchestratorAgent(AgentGraphBuilder):
         self.workflow.add_node('integrate_results', self._integrate_results)
         self.workflow.add_node('generate_document', self._generate_document)
 
-        # エッジを追加
+        # v2.0新機能: レビューゲートノード
+        self.workflow.add_node('functional_review', self._review_functional_requirements)
+        self.workflow.add_node('non_functional_review', self._review_non_functional_requirements)
+        self.workflow.add_node('solution_review', self._review_solution_architecture)
+
+        # v2.0新機能: 修正処理ノード
+        self.workflow.add_node('revise_functional', self._revise_functional_requirements)
+        self.workflow.add_node('revise_non_functional', self._revise_non_functional_requirements)
+        self.workflow.add_node('revise_solution', self._revise_solution_architecture)
+
+        # 基本フロー
         self.workflow.add_edge(START, 'initialize')
         self.workflow.add_edge('initialize', 'system_analysis')
         self.workflow.add_edge('system_analysis', 'functional_req_phase')
-        self.workflow.add_edge('functional_req_phase', 'non_functional_req_phase')
-        self.workflow.add_edge('non_functional_req_phase', 'data_arch_phase')
+
+        # v2.0新機能: 条件分岐エッジ
+        if self.interactive_mode:
+            # レビューゲート付きフロー
+            self.workflow.add_edge('functional_req_phase', 'functional_review')
+            self.workflow.add_conditional_edges(
+                'functional_review',
+                self._decide_functional_next_step,
+                {
+                    'approved': 'non_functional_req_phase',
+                    'revise': 'revise_functional',
+                },
+            )
+            self.workflow.add_edge('revise_functional', 'functional_review')
+
+            self.workflow.add_edge('non_functional_req_phase', 'non_functional_review')
+            self.workflow.add_conditional_edges(
+                'non_functional_review',
+                self._decide_non_functional_next_step,
+                {
+                    'approved': 'data_arch_phase',
+                    'revise': 'revise_non_functional',
+                },
+            )
+            self.workflow.add_edge('revise_non_functional', 'non_functional_review')
+
+            self.workflow.add_edge('solution_arch_phase', 'solution_review')
+            self.workflow.add_conditional_edges(
+                'solution_review',
+                self._decide_solution_next_step,
+                {
+                    'approved': 'integrate_results',
+                    'revise': 'revise_solution',
+                },
+            )
+            self.workflow.add_edge('revise_solution', 'solution_review')
+        else:
+            # 従来の直線フロー
+            self.workflow.add_edge('functional_req_phase', 'non_functional_req_phase')
+            self.workflow.add_edge('solution_arch_phase', 'integrate_results')
+
         self.workflow.add_edge('data_arch_phase', 'solution_arch_phase')
-        self.workflow.add_edge('solution_arch_phase', 'integrate_results')
         self.workflow.add_edge('integrate_results', 'generate_document')
         self.workflow.add_edge('generate_document', END)
 
         return self.workflow.compile()
 
     def _initialize_process(self, state: RequirementProcessState) -> Dict[str, Any]:
-        """プロセスの初期化"""
-        logger.info('要件定義プロセスを初期化しています...')
+        """プロセスの初期化 v2.0"""
+        logger.info('要件定義プロセス v2.0 を初期化しています...')
 
-        return {
+        # v2.0設定
+        initial_update = {
             'current_phase': RequirementProcessPhase.SYSTEM_ANALYSIS,
-            'messages': [{'role': 'system', 'content': '要件定義プロセスを開始しました'}],
+            'is_interactive_mode': self.interactive_mode,
+            'auto_approve': self.auto_approve,
+            'document_version': '1.0',
+            'version_history': ['1.0 - 初期版'],
+            'retry_attempts': {},
+            'phase_reviews': [],
+            'messages': [{'role': 'system', 'content': f'要件定義プロセス v2.0 を開始しました (対話モード: {self.interactive_mode})'}],
         }
+
+        logger.info(f'対話モード: {self.interactive_mode}, 自動承認: {self.auto_approve}')
+        return initial_update
 
     def _execute_system_analysis(self, state: RequirementProcessState) -> Dict[str, Any]:
         """システム分析フェーズの実行"""
@@ -447,3 +524,239 @@ class RequirementProcessOrchestratorAgent(AgentGraphBuilder):
 
         logger.info(f'要件定義書を保存しました: {file_path}')
         return str(file_path)
+
+    # =====================================
+    # v2.0新機能: レビューゲート機能
+    # =====================================
+
+    def _review_functional_requirements(self, state: RequirementProcessState) -> Dict[str, Any]:
+        """機能要件のレビューゲート"""
+        logger.info('機能要件のユーザーレビューを開始します...')
+
+        # レビュー対象の内容を準備
+        functional_requirements = state.get('functional_requirements', [])
+        persona_outputs = state.get('persona_outputs', [])
+        content = {
+            'functional_requirements': functional_requirements,
+            'persona_outputs': [output for output in persona_outputs if output.persona_role in ['ux_designer', 'qa_engineer']],
+        }
+
+        # フェーズレビューを作成
+        phase_review = self.review_manager.create_phase_review(
+            RequirementProcessPhase.FUNCTIONAL_REQUIREMENTS,
+            content,
+            f'{len(functional_requirements)}個の機能要件が定義されました',
+        )
+
+        # ユーザーレビューの実行
+        if self.auto_approve:
+            feedback = self.review_manager.simulate_user_feedback(RequirementProcessPhase.FUNCTIONAL_REQUIREMENTS, auto_approve=True)
+        else:
+            # レビュー内容をプレゼンテーション
+            presentation = self.review_manager.present_for_review(phase_review, content)
+            logger.info(f'レビュー内容:\n{presentation}')
+
+            # 模擬ユーザーフィードバック（実際の実装では入力待ち）
+            feedback = self.review_manager.simulate_user_feedback(RequirementProcessPhase.FUNCTIONAL_REQUIREMENTS)
+
+        # レビュー結果を更新
+        phase_review = self.review_manager.update_phase_review(phase_review, feedback)
+
+        return {
+            'current_phase': RequirementProcessPhase.FUNCTIONAL_REVIEW,
+            'pending_review': phase_review,
+            'review_feedback': feedback,
+            'phase_reviews': state.get('phase_reviews', []) + [phase_review],
+            'messages': [{'role': 'system', 'content': f'機能要件レビュー完了: {feedback.decision}'}],
+        }
+
+    def _review_non_functional_requirements(self, state: RequirementProcessState) -> Dict[str, Any]:
+        """非機能要件のレビューゲート"""
+        logger.info('非機能要件のユーザーレビューを開始します...')
+
+        non_functional_requirements = state.get('non_functional_requirements', [])
+        persona_outputs = state.get('persona_outputs', [])
+        content = {
+            'non_functional_requirements': non_functional_requirements,
+            'persona_outputs': [
+                output for output in persona_outputs if output.persona_role in ['infrastructure_engineer', 'security_specialist']
+            ],
+        }
+
+        phase_review = self.review_manager.create_phase_review(
+            RequirementProcessPhase.NON_FUNCTIONAL_REQUIREMENTS,
+            content,
+            f'{len(non_functional_requirements)}個の非機能要件が定義されました',
+        )
+
+        if self.auto_approve:
+            feedback = self.review_manager.simulate_user_feedback(
+                RequirementProcessPhase.NON_FUNCTIONAL_REQUIREMENTS, auto_approve=True
+            )
+        else:
+            presentation = self.review_manager.present_for_review(phase_review, content)
+            logger.info(f'レビュー内容:\n{presentation}')
+            feedback = self.review_manager.simulate_user_feedback(RequirementProcessPhase.NON_FUNCTIONAL_REQUIREMENTS)
+
+        phase_review = self.review_manager.update_phase_review(phase_review, feedback)
+
+        return {
+            'current_phase': RequirementProcessPhase.NON_FUNCTIONAL_REVIEW,
+            'pending_review': phase_review,
+            'review_feedback': feedback,
+            'phase_reviews': state.get('phase_reviews', []) + [phase_review],
+            'messages': [{'role': 'system', 'content': f'非機能要件レビュー完了: {feedback.decision}'}],
+        }
+
+    def _review_solution_architecture(self, state: RequirementProcessState) -> Dict[str, Any]:
+        """ソリューションアーキテクチャのレビューゲート"""
+        logger.info('ソリューションアーキテクチャのユーザーレビューを開始します...')
+
+        system_architecture = state.get('system_architecture')
+        persona_outputs = state.get('persona_outputs', [])
+        content = {
+            'system_architecture': system_architecture,
+            'persona_outputs': [output for output in persona_outputs if output.persona_role == 'solution_architect'],
+        }
+
+        phase_review = self.review_manager.create_phase_review(
+            RequirementProcessPhase.SOLUTION_ARCHITECTURE, content, 'システム構成と技術スタックが提案されました'
+        )
+
+        if self.auto_approve:
+            feedback = self.review_manager.simulate_user_feedback(RequirementProcessPhase.SOLUTION_ARCHITECTURE, auto_approve=True)
+        else:
+            presentation = self.review_manager.present_for_review(phase_review, content)
+            logger.info(f'レビュー内容:\n{presentation}')
+            feedback = self.review_manager.simulate_user_feedback(RequirementProcessPhase.SOLUTION_ARCHITECTURE)
+
+        phase_review = self.review_manager.update_phase_review(phase_review, feedback)
+
+        return {
+            'current_phase': RequirementProcessPhase.SOLUTION_REVIEW,
+            'pending_review': phase_review,
+            'review_feedback': feedback,
+            'phase_reviews': state.get('phase_reviews', []) + [phase_review],
+            'messages': [{'role': 'system', 'content': f'ソリューションアーキテクチャレビュー完了: {feedback.decision}'}],
+        }
+
+    # =====================================
+    # v2.0新機能: 条件分岐判定
+    # =====================================
+
+    def _decide_functional_next_step(self, state: RequirementProcessState) -> str:
+        """機能要件レビュー後の次ステップ判定"""
+        review_feedback = state.get('review_feedback')
+        if review_feedback and review_feedback.decision == ReviewDecision.APPROVE:
+            return 'approved'
+        return 'revise'
+
+    def _decide_non_functional_next_step(self, state: RequirementProcessState) -> str:
+        """非機能要件レビュー後の次ステップ判定"""
+        review_feedback = state.get('review_feedback')
+        if review_feedback and review_feedback.decision == ReviewDecision.APPROVE:
+            return 'approved'
+        return 'revise'
+
+    def _decide_solution_next_step(self, state: RequirementProcessState) -> str:
+        """ソリューションアーキテクチャレビュー後の次ステップ判定"""
+        review_feedback = state.get('review_feedback')
+        if review_feedback and review_feedback.decision == ReviewDecision.APPROVE:
+            return 'approved'
+        return 'revise'
+
+    # =====================================
+    # v2.0新機能: 修正処理
+    # =====================================
+
+    def _revise_functional_requirements(self, state: RequirementProcessState) -> Dict[str, Any]:
+        """機能要件の修正処理"""
+        logger.info('機能要件の修正を実行しています...')
+
+        review_feedback = state.get('review_feedback')
+        if review_feedback:
+            # 修正指示を生成
+            revision_instructions = self.review_manager.generate_revision_instructions(review_feedback)
+            logger.info(f'修正指示: {revision_instructions}')
+
+            # リトライカウント更新
+            retry_attempts = state.get('retry_attempts', {})
+            retry_count = retry_attempts.get('functional_requirements', 0) + 1
+
+            # バージョン更新
+            document_version = state.get('document_version', '1.0')
+            new_version = self._increment_version(document_version)
+
+            # 修正実行（実際の実装では修正されたペルソナエージェント再実行）
+            return {
+                'current_phase': RequirementProcessPhase.FUNCTIONAL_REQUIREMENTS,
+                'retry_attempts': {**retry_attempts, 'functional_requirements': retry_count},
+                'document_version': new_version,
+                'version_history': state.get('version_history', []) + [f'{new_version} - 機能要件修正'],
+                'revision_count': state.get('revision_count', 0) + 1,
+                'messages': [{'role': 'system', 'content': f'機能要件を修正中 (試行 {retry_count})'}],
+            }
+
+        return {'messages': [{'role': 'system', 'content': '修正処理をスキップしました'}]}
+
+    def _revise_non_functional_requirements(self, state: RequirementProcessState) -> Dict[str, Any]:
+        """非機能要件の修正処理"""
+        logger.info('非機能要件の修正を実行しています...')
+
+        review_feedback = state.get('review_feedback')
+        if review_feedback:
+            revision_instructions = self.review_manager.generate_revision_instructions(review_feedback)
+            logger.info(f'修正指示: {revision_instructions}')
+
+            retry_attempts = state.get('retry_attempts', {})
+            retry_count = retry_attempts.get('non_functional_requirements', 0) + 1
+            document_version = state.get('document_version', '1.0')
+            new_version = self._increment_version(document_version)
+
+            return {
+                'current_phase': RequirementProcessPhase.NON_FUNCTIONAL_REQUIREMENTS,
+                'retry_attempts': {**retry_attempts, 'non_functional_requirements': retry_count},
+                'document_version': new_version,
+                'version_history': state.get('version_history', []) + [f'{new_version} - 非機能要件修正'],
+                'revision_count': state.get('revision_count', 0) + 1,
+                'messages': [{'role': 'system', 'content': f'非機能要件を修正中 (試行 {retry_count})'}],
+            }
+
+        return {'messages': [{'role': 'system', 'content': '修正処理をスキップしました'}]}
+
+    def _revise_solution_architecture(self, state: RequirementProcessState) -> Dict[str, Any]:
+        """ソリューションアーキテクチャの修正処理"""
+        logger.info('ソリューションアーキテクチャの修正を実行しています...')
+
+        review_feedback = state.get('review_feedback')
+        if review_feedback:
+            revision_instructions = self.review_manager.generate_revision_instructions(review_feedback)
+            logger.info(f'修正指示: {revision_instructions}')
+
+            retry_attempts = state.get('retry_attempts', {})
+            retry_count = retry_attempts.get('solution_architecture', 0) + 1
+            document_version = state.get('document_version', '1.0')
+            new_version = self._increment_version(document_version)
+
+            return {
+                'current_phase': RequirementProcessPhase.SOLUTION_ARCHITECTURE,
+                'retry_attempts': {**retry_attempts, 'solution_architecture': retry_count},
+                'document_version': new_version,
+                'version_history': state.get('version_history', []) + [f'{new_version} - アーキテクチャ修正'],
+                'revision_count': state.get('revision_count', 0) + 1,
+                'messages': [{'role': 'system', 'content': f'ソリューションアーキテクチャを修正中 (試行 {retry_count})'}],
+            }
+
+        return {'messages': [{'role': 'system', 'content': '修正処理をスキップしました'}]}
+
+    # =====================================
+    # v2.0新機能: バージョン管理
+    # =====================================
+
+    def _increment_version(self, current_version: str) -> str:
+        """バージョン番号を増分"""
+        try:
+            major, minor = current_version.split('.')
+            return f'{major}.{int(minor) + 1}'
+        except (ValueError, IndexError):
+            return '1.1'
