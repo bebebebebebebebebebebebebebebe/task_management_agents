@@ -10,8 +10,24 @@ wheels/
 .venv
 .env
 .env.local
+.env.development
+.env.production
 .coverage
 .pytest_cache
 .ruff_cache
 .mcp.json
 .prompts.*
+
+# LangGraph related
+outputs/
+logs/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker volumes
+deployment/volumes/
+.langgraph_api

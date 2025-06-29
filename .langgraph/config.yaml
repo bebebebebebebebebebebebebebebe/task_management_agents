@@ -1,0 +1,44 @@
+project:
+  name: "task_management_agents"
+  version: "1.0.0"
+  description: "タスク管理エージェントシステム"
+
+graphs:
+  biz_requirement:
+    path: "src.agents.biz_requirement:create_agent_graph"
+    description: "ビジネス要件定義エージェント"
+    tags: ["business", "requirements"]
+
+  requirement_process:
+    path: "src.agents.requirement_process:create_orchestrator_graph"
+    description: "技術要件プロセスエージェント"
+    tags: ["technical", "requirements", "orchestrator"]
+
+  integrated_workflow:
+    path: "src.agents.integrated_workflow:create_workflow_graph"
+    description: "統合ワークフローエージェント"
+    tags: ["workflow", "integration"]
+
+deployment:
+  production:
+    env_file: ".env.production"
+    wait_online: 300
+    replicas: 2
+    resources:
+      memory: "1Gi"
+      cpu: "500m"
+
+  development:
+    env_file: ".env.development"
+    debugger_port: 8001
+    hot_reload: true
+    log_level: "DEBUG"
+
+dependencies:
+  python: ">=3.13"
+  requirements_file: "requirements.txt"
+
+testing:
+  framework: "pytest"
+  coverage_threshold: 80
+  test_paths: ["tests/"]

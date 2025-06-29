@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.13"
 dependencies = [
     "click>=8.2.1",
+    "fastapi>=0.104.0",
     "fastmcp>=2.5.0",
     "langchain-chroma>=0.2.4",
     "langchain-community>=0.3.24",
@@ -17,19 +18,24 @@ dependencies = [
     "langchain-openai>=0.3.18",
     "langchain-text-splitters>=0.3.8",
     "langgraph>=0.4.7",
-    "langgraph-cli>=0.2.10",
+    "langgraph-cli[inmem]>=0.2.10",
     "langgraph-sdk>=0.1.70",
     "mcp[cli]>=1.9.1",
     "pydantic-settings>=2.9.1",
     "python-dotenv>=1.1.0",
+    "pyyaml>=6.0",
     "streamlit>=1.46.1",
     "tavily-python>=0.7.2",
+    "uvicorn>=0.24.0",
 ]
 
 [project.scripts]
 task-management-agents = "task_manager:main"
 biz-requirement-agent = "agents.biz_requirement:main"
 requirement-process-agent = "agents.requirement_process:main"
+integrated-workflow-agent = "agents.integrated_workflow:main"
+langgraph-server = "scripts.start_server:main"
+start-server = "scripts.start_server:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -40,6 +46,9 @@ packages = [
     "src/task_manager",
     "src/agents/biz_requirement",
     "src/agents/requirement_process",
+    "src/agents/integrated_workflow",
+    "src/config",
+    "scripts",
 ]
 
 
@@ -74,7 +83,11 @@ select = [
 ignore = [
     "F401",
     "E501",
-    "S101"
+    "S101",
+    "E402",  # Module level import not at top of file
+    "S603",  # subprocess call: check for execution of untrusted input
+    "S607",  # Starting a process with a partial executable path
+    "S104"   # Possible binding to all interfaces
 ]
 
 [tool.ruff.format]

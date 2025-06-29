@@ -1,0 +1,85 @@
+{
+  "dependencies": ["./"],
+  "graphs": {
+    "biz_requirement_agent": {
+      "path": "src.agents.biz_requirement:create_agent_graph",
+      "config_schema": {
+        "type": "object",
+        "properties": {
+          "interactive_mode": {
+            "type": "boolean",
+            "default": true,
+            "description": "インタラクティブモードの有効化"
+          },
+          "auto_save": {
+            "type": "boolean",
+            "default": true,
+            "description": "自動保存機能の有効化"
+          },
+          "output_dir": {
+            "type": "string",
+            "default": "outputs",
+            "description": "出力ディレクトリのパス"
+          }
+        }
+      }
+    },
+    "requirement_process_agent": {
+      "path": "src.agents.requirement_process:create_orchestrator_graph",
+      "config_schema": {
+        "type": "object",
+        "properties": {
+          "interactive_mode": {
+            "type": "boolean",
+            "default": true,
+            "description": "インタラクティブモードの有効化"
+          },
+          "auto_approve": {
+            "type": "boolean",
+            "default": false,
+            "description": "自動承認モードの有効化"
+          },
+          "max_retry_attempts": {
+            "type": "integer",
+            "default": 3,
+            "minimum": 1,
+            "description": "最大リトライ回数"
+          }
+        }
+      }
+    },
+    "integrated_workflow_agent": {
+      "path": "src.agents.integrated_workflow:create_workflow_graph",
+      "config_schema": {
+        "type": "object",
+        "properties": {
+          "enable_persistence": {
+            "type": "boolean",
+            "default": true,
+            "description": "永続化機能の有効化"
+          },
+          "enable_auto_save": {
+            "type": "boolean",
+            "default": true,
+            "description": "自動保存機能の有効化"
+          },
+          "intermediate_save": {
+            "type": "boolean",
+            "default": true,
+            "description": "中間保存機能の有効化"
+          }
+        }
+      }
+    }
+  },
+  "env": ".env",
+  "server": {
+    "port": 8000,
+    "host": "0.0.0.0",
+    "cors": {
+      "allow_origins": ["*"],
+      "allow_methods": ["GET", "POST", "PUT", "DELETE"],
+      "allow_headers": ["*"]
+    }
+  }
+}

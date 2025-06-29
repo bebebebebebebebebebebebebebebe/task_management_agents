@@ -1,10 +1,13 @@
 import asyncio
 import uuid
+from typing import Any, Dict, Optional
 
 from langchain.schema import AIMessage
+from langgraph.graph.graph import CompiledGraph
 from langgraph.types import Command
 
 from agents.biz_requirement.biz_requirement_agent import BizRequirementAgent, check_pointer
+from agents.biz_requirement.schemas import RequirementState
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -67,6 +70,36 @@ def main():
 
     logger.info('Biz Requirement Agentを起動します。')
     asyncio.run(event_loop())
+
+
+def create_agent_graph(config: Optional[Dict[str, Any]] = None) -> CompiledGraph:
+    """ビジネス要件定義エージェントのグラフを作成
+
+    Args:
+        config: エージェント設定
+            - interactive_mode (bool): インタラクティブモード (default: True)
+            - auto_save (bool): 自動保存 (default: True)
+            - output_dir (str): 出力ディレクトリ (default: "outputs")
+
+    Returns:
+        CompiledGraph: コンパイル済みエージェントグラフ
+    """
+    if config is None:
+        config = {}
+
+    # デフォルト設定（将来の拡張用）
+    _ = config.get('interactive_mode', True)
+    _ = config.get('auto_save', True)
+    _ = config.get('output_dir', 'outputs')
+
+    # エージェント作成（現在は設定を使用せずデフォルトインスタンス）
+    agent = BizRequirementAgent()
+
+    return agent.build_graph()
+
+
+# エクスポート用
+__all__ = ['create_agent_graph', 'BizRequirementAgent', 'main', 'event_loop']
 
 
 if __name__ == '__main__':

@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  langgraph-server:
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - LANGGRAPH_ENV=production
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - LANGSMITH_API_KEY=${LANGSMITH_API_KEY}
+      - TAVILY_API_KEY=${TAVILY_API_KEY}
+    volumes:
+      - ../outputs:/app/outputs
+      - ../logs:/app/logs
+    networks:
+      - langgraph-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  webhook-server:
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile.webhooks
+    ports:
+      - "8001:8001"
+    environment:
+      - LANGGRAPH_SERVER_URL=http://langgraph-server:8000
+    depends_on:
+      langgraph-server:
+        condition: service_healthy
+    networks:
+      - langgraph-network
+
+networks:
+  langgraph-network:
+    driver: bridge
+
+volumes:
+  outputs:
+  logs:
